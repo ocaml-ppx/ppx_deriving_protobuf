@@ -1,0 +1,28 @@
+OASISFormat:  0.4
+Name:         ppx_protobuf
+Version:      0.1
+Synopsis:     A Protobuf codec generator for OCaml >=4.02 based on extension points
+Authors:      Peter Zotov <whitequark@whitequark.org>
+License:      MIT
+Plugins:      META (0.4), DevFiles (0.4)
+BuildTools:   ocamlbuild
+OCamlVersion: >= 4.02
+
+Executable ppx_protobuf
+  Path:           lib
+  BuildDepends:   compiler-libs.common
+  MainIs:         ppx_protobuf.ml
+  CompiledObject: byte
+
+Executable test_ppx_protobuf
+  Build$:         flag(tests)
+  Install:        false
+  Path:           lib_test
+  MainIs:         test_ppx_protobuf.ml
+  BuildTools:     ppx_protobuf
+  BuildDepends:   oUnit (>= 2)
+  CompiledObject: byte
+  ByteOpt:        -ppx lib/ppx_protobuf.byte
+
+Test test_ppx_protobuf
+  Command:        $test_ppx_protobuf
