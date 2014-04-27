@@ -8,6 +8,10 @@ Plugins:      META (0.4), DevFiles (0.4)
 BuildTools:   ocamlbuild
 OCamlVersion: >= 4.02
 
+Library protobuf
+  Path:           lib
+  Modules:        Protobuf
+
 Executable ppx_protobuf
   Path:           lib
   BuildDepends:   compiler-libs.common
@@ -20,7 +24,7 @@ Executable test_ppx_protobuf
   Path:           lib_test
   MainIs:         test_ppx_protobuf.ml
   BuildTools:     ppx_protobuf
-  BuildDepends:   oUnit (>= 2)
+  BuildDepends:   protobuf, oUnit (>= 2)
   CompiledObject: byte
   ByteOpt:        -ppx lib/ppx_protobuf.byte
 

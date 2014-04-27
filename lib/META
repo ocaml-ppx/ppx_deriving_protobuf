@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: c32afb8d3bdd9d24b4b223a7fd495d5d)
+version = "0.1"
+description =
+"A Protobuf codec generator for OCaml >=4.02 based on extension points"
+archive(byte) = "protobuf.cma"
+archive(byte, plugin) = "protobuf.cma"
+archive(native) = "protobuf.cmxa"
+archive(native, plugin) = "protobuf.cmxs"
+exists_if = "protobuf.cma"
+# OASIS_STOP
+

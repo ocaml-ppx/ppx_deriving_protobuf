@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 7a19bea349f1966d588514a975efdceb) *)
+(* DO NOT EDIT (digest: 6434e1cb5d8c162ae76b1b24fdd8dc97) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -595,7 +595,7 @@ end
 open Ocamlbuild_plugin;;
 let package_default =
   {
-     MyOCamlbuildBase.lib_ocaml = [];
+     MyOCamlbuildBase.lib_ocaml = [("protobuf", ["lib"], [])];
      lib_c = [];
      flags =
        [
@@ -617,7 +617,7 @@ let package_default =
            ],
             [(OASISExpr.EBool true, S [A "-ppx"; A "lib/ppx_protobuf.byte"])])
        ];
-     includes = []
+     includes = [("lib_test", ["lib"])]
   }
   ;;
 
