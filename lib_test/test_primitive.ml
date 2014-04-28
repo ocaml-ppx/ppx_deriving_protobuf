@@ -87,6 +87,13 @@ let test_string ctxt =
   let d = Protobuf.Decoder.of_string "\x0a\x03abc" in
   assert_equal ~printer:(fun x -> x) "abc" (s_from_protobuf d)
 
+type o = int option [@@protobuf]
+let test_option ctxt =
+  let d = Protobuf.Decoder.of_string "" in
+  assert_equal None (o_from_protobuf d);
+  let d = Protobuf.Decoder.of_string "\x08\xac\x02" in
+  assert_equal (Some 300) (o_from_protobuf d)
+
 let test_errors ctxt =
   let d = Protobuf.Decoder.of_string "" in
   assert_raises Protobuf.Decoder.(Failure (Missing_field "s"))
@@ -106,6 +113,7 @@ let suite = "Test primitive types" >::: [
     "test_uints"  >:: test_uints;
     "test_floats" >:: test_floats;
     "test_string" >:: test_string;
+    "test_option" >:: test_option;
     "test_errors" >:: test_errors;
     "test_skip"   >:: test_skip;
   ]

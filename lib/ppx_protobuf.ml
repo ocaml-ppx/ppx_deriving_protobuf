@@ -21,11 +21,15 @@ and pb_type =
 | Pbt_uint64
 | Pbt_float
 | Pbt_string
+and pb_kind =
+| Pbk_required
+| Pbk_optional
 and pb_field = {
   pbf_name  : string;
   pbf_key   : int;
   pbf_enc   : pb_encoding;
-  pbf_kind  : pb_type;
+  pbf_type  : pb_type;
+  pbf_kind  : pb_kind;
 }
 
 type pb_error =
@@ -128,24 +132,25 @@ let pb_encoding_of_attrs attrs =
   | { loc }, _ -> raise (Error (Pberr_attr_syntax loc))
 
 let fields_of_ptype ptype =
-  let rec field_of_ptyp pbf_key pbf_name ptyp =
+  let rec field_of_ptyp pbf_name pbf_key pbf_kind ptyp =
     match ptyp with
-    | { ptyp_desc = Ptyp_constr (lid, args); ptyp_attributes = attrs; ptyp_loc; } ->
-      let pbf_kind =
-        match args, lid with
-        | [], { txt = Lident "bool"   } -> Pbt_bool
-        | [], { txt = Lident "int"    } -> Pbt_int
-        | [], { txt = Lident "float"  } -> Pbt_float
-        | [], { txt = Lident "string" } -> Pbt_string
-        | [], { txt = Lident "int32" }
-        | [], { txt = Ldot (Lident "Int32", "t") }  -> Pbt_int32
-        | [], { txt = Lident "int64" }
-        | [], { txt = Ldot (Lident "Int64", "t") }  -> Pbt_int64
-        | [], { txt = Lident "uint32" }
-        | [], { txt = Ldot (Lident "Uint32", "t") } -> Pbt_uint32
-        | [], { txt = Lident "uint64" }
-        | [], { txt = Ldot (Lident "Uint64", "t") } -> Pbt_uint64
-        | _,  { txt = ty } -> raise (Error (Pberr_wrong_ty ptyp))
+    | { ptyp_desc = Ptyp_constr ({ txt = Lident "option" }, [arg]) } ->
+      begin match pbf_kind with
+      | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_optional arg
+      | _ -> raise (Error (Pberr_wrong_ty ptyp))
+      end
+    | { ptyp_desc = Ptyp_constr ({ txt = lid }, []); ptyp_attributes = attrs; ptyp_loc; } ->
+      let pbf_type =
+        match lid with
+        | Lident "bool"   -> Pbt_bool
+        | Lident "int"    -> Pbt_int
+        | Lident "float"  -> Pbt_float
+        | Lident "string" -> Pbt_string
+        | Lident "int32"  | Ldot (Lident "Int32", "t")  -> Pbt_int32
+        | Lident "int64"  | Ldot (Lident "Int64", "t")  -> Pbt_int64
+        | Lident "uint32" | Ldot (Lident "Uint32", "t") -> Pbt_uint32
+        | Lident "uint64" | Ldot (Lident "Uint64", "t") -> Pbt_uint64
+        | _ -> raise (Error (Pberr_wrong_ty ptyp))
       in
       let pbf_key =
         try  pb_key_of_attrs attrs
@@ -157,7 +162,7 @@ let fields_of_ptype ptype =
       let pbf_enc =
         try  pb_encoding_of_attrs attrs
         with Not_found ->
-          match pbf_kind with
+          match pbf_type with
           | Pbt_bool   -> Pbe_bool
           | Pbt_int    -> Pbe_varint
           | Pbt_float  -> Pbe_bits64
@@ -165,31 +170,29 @@ let fields_of_ptype ptype =
           | Pbt_int32  | Pbt_uint32   -> Pbe_bits32
           | Pbt_int64  | Pbt_uint64   -> Pbe_bits64
       in
-      begin match pbf_kind, pbf_enc with
+      begin match pbf_type, pbf_enc with
       | Pbt_bool, Pbe_bool
       | (Pbt_int | Pbt_int32 | Pbt_int64 | Pbt_uint32 | Pbt_uint64),
         (Pbe_varint | Pbe_zigzag | Pbe_bits32 | Pbe_bits64)
       | Pbt_float, (Pbe_bits32 | Pbe_bits64)
       | Pbt_string, Pbe_bytes ->
-        { pbf_name; pbf_key; pbf_enc; pbf_kind; }
+        { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind; }
       | _ ->
-        raise (Error (Pberr_no_conversion (ptyp_loc, pbf_kind, pbf_enc)))
+        raise (Error (Pberr_no_conversion (ptyp_loc, pbf_type, pbf_enc)))
       end
     | { ptyp_desc = Ptyp_alias (ptyp', _) } ->
-      field_of_ptyp pbf_key pbf_name ptyp'
+      field_of_ptyp pbf_name pbf_key pbf_kind ptyp'
     | ptyp -> raise (Error (Pberr_wrong_ty ptyp))
   in
   match ptype with
   | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
-    List.mapi (fun i ptyp ->
-        field_of_ptyp (Some (i + 1))
-      (Printf.sprintf "field_%d" i) ptyp) ptyps
+    ptyps |> List.mapi (fun i ptyp ->
+      field_of_ptyp (Printf.sprintf "field_%d" i) (Some (i + 1)) Pbk_required ptyp)
   | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
-    [field_of_ptyp (Some 1) "field" ptyp]
+    [field_of_ptyp "field" (Some 1) Pbk_required ptyp]
   | { ptype_kind = Ptype_record fields } ->
-    List.mapi (fun i { pld_name; pld_type; } ->
-        field_of_ptyp None ("field_" ^ pld_name.txt) pld_type)
-      fields
+    fields |> List.mapi (fun i { pld_name; pld_type; } ->
+      field_of_ptyp ("field_" ^ pld_name.txt) None Pbk_required pld_type)
   | _ -> assert false
 
 let derive_reader ({ ptype_name } as ptype) =
@@ -203,13 +206,13 @@ let derive_reader ({ ptype_name } as ptype) =
                (mk_cells rest k)
     | [] -> k
   in
-  let mk_reader pbf_enc pbf_kind reader =
+  let mk_reader { pbf_enc; pbf_type; } reader =
     let value =
       Exp.apply (Exp.ident (lid
           ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))))
         ["", reader]
     in
-    match pbf_kind, pbf_enc with
+    match pbf_type, pbf_enc with
     (* bool *)
     | Pbt_bool, Pbe_bool -> value
     (* int *)
@@ -248,7 +251,7 @@ let derive_reader ({ ptype_name } as ptype) =
   in
   let rec mk_field_cases fields =
     match fields with
-    | { pbf_key; pbf_name; pbf_enc; pbf_kind; } :: rest ->
+    | { pbf_key; pbf_name; pbf_enc; pbf_type; } as field :: rest ->
       (Exp.case (Pat.construct (lid "Some")
                   (Some (Pat.tuple
                     [Pat.constant (Const_int pbf_key);
@@ -258,7 +261,7 @@ let derive_reader ({ ptype_name } as ptype) =
                     (Exp.ident (lid ":="))
                     ["", Exp.ident (lid pbf_name);
                      "", Exp.construct (lid "Some")
-                      (Some (mk_reader pbf_enc pbf_kind (Exp.ident (lid "reader"))))])
+                      (Some (mk_reader field (Exp.ident (lid "reader"))))])
                   (Exp.apply (Exp.ident (lid "read"))
                     ["", Exp.construct (lid "()") None]))) ::
       (Exp.case (Pat.construct (lid "Some")
@@ -292,6 +295,9 @@ let derive_reader ({ ptype_name } as ptype) =
   in
   let construct_ptyp pbf_name ptyp =
     match ptyp with
+    | { ptyp_desc = Ptyp_constr ({ txt = Lident "option" }, _) } ->
+      Exp.apply (Exp.ident (lid "!"))
+                ["", Exp.ident (lid pbf_name)]
     | { ptyp_desc = Ptyp_constr _; } ->
       Exp.match_ (Exp.apply (Exp.ident (lid "!"))
                             ["", Exp.ident (lid pbf_name)])
