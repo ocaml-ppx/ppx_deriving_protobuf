@@ -5,12 +5,6 @@ type payload_kind =
 | Bits64
 | Bytes
 
-(** [zigzag32 v] returns [v] after zigzag transformation. *)
-val zigzag32      : int32 -> int32
-
-(** [zigzag64 v] returns [v] after zigzag transformation. *)
-val zigzag64      : int64 -> int64
-
 module Reader : sig
   (** Type of wire format readers. *)
   type t
@@ -33,17 +27,26 @@ module Reader : sig
       [Encoding_error Incomplete]. *)
   val skip          : t -> payload_kind -> unit
 
+  (** [bool r] reads a bool from [r].
+      If [r] has exhausted its input, raises [Decoding_error Incomplete].
+      If the value is not [0] or [1], raises [Decoding_error Overflow]. *)
+  val bool          : t -> bool
+
   (** [varint r] reads a varint from [r].
       If [r] has exhausted its input, raises [Decoding_error Incomplete]. *)
   val varint        : t -> int64
 
-  (** [int32 r] reads four bytes from [r].
+  (** [zigzag r] reads a zigzag-encoded varint from [r].
       If [r] has exhausted its input, raises [Decoding_error Incomplete]. *)
-  val int32         : t -> int32
+  val zigzag        : t -> int64
 
-  (** [int64 r] reads eight bytes from [r].
+  (** [bits32 r] reads four bytes from [r].
       If [r] has exhausted its input, raises [Decoding_error Incomplete]. *)
-  val int64         : t -> int64
+  val bits32        : t -> int32
+
+  (** [bits64 r] reads eight bytes from [r].
+      If [r] has exhausted its input, raises [Decoding_error Incomplete]. *)
+  val bits64        : t -> int64
 
   (** [bytes r] reads a varint from [r].
       If [r] has exhausted its input, raises [Decoding_error Incomplete]. *)
@@ -64,10 +67,10 @@ module Reader : sig
   (** [int_of_int32 v] returns [v] truncated to [int].
       If the value doesn't fit in the range of [int], raises
       [Decoding_error Overflow]. *)
-  val int_of_int32  : int32 -> int
+  val int_of_int32 : int32 -> int
 
   (** [int_of_int64 v] returns [v] truncated to [int].
       If the value doesn't fit in the range of [int], raises
       [Decoding_error Overflow]. *)
-  val int_of_int64  : int64 -> int
+  val int_of_int64 : int64 -> int
 end

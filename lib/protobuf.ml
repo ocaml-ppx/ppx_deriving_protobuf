@@ -4,12 +4,6 @@ type payload_kind =
 | Bits64
 | Bytes
 
-let zigzag32 v =
-  Int32.(logxor (shift_left v 1) (shift_right v 31))
-
-let zigzag64 v =
-  Int64.(logxor (shift_left v 1) (shift_right v 63))
-
 module Reader = struct
   type t = {
             source : string;
@@ -70,6 +64,13 @@ module Reader = struct
     r.offset <- r.offset + 1;
     byte
 
+  let bool r =
+    let b = byte r in
+    match b with
+    | 0 -> false
+    | 1 -> true
+    | _ -> raise (Error Overflow)
+
   let varint r =
     let rec read s =
       let b = byte r in
@@ -79,7 +80,11 @@ module Reader = struct
     in
     read 0
 
-  let int32 r =
+  let zigzag r =
+    let v = varint r in
+    Int64.(logxor (shift_right v 1) (neg (logand v Int64.one)))
+
+  let bits32 r =
     let b4 = byte r in
     let b3 = byte r in
     let b2 = byte r in
@@ -89,7 +94,7 @@ module Reader = struct
             (add (shift_left (of_int b3) 8)
              (of_int b4))))
 
-  let int64 r =
+  let bits64 r =
     let b8 = byte r in
     let b7 = byte r in
     let b6 = byte r in

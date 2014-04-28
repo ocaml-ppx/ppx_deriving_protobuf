@@ -24,7 +24,7 @@ Executable test_ppx_protobuf
   Path:           lib_test
   MainIs:         test_ppx_protobuf.ml
   BuildTools:     ppx_protobuf
-  BuildDepends:   protobuf, oUnit (>= 2)
+  BuildDepends:   protobuf, oUnit (>= 2), uint (>= 1.1.1)
   CompiledObject: byte
   ByteOpt:        -ppx lib/ppx_protobuf.byte
 
