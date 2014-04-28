@@ -27,6 +27,10 @@ let test_reader ctxt =
   assert_equal (Some (3, Bytes))  (Decoder.key r);
   assert_equal (Some (4, Bits32)) (Decoder.key r);
   assert_equal None (Decoder.key r);
+  let r  = Decoder.of_string "\x15\x00\x00\xC0\x3f\x01" in
+  assert_equal (Some (2, Bits32)) (Decoder.key r);
+  Decoder.skip r Bits32;
+  assert_equal ~printer:Int64.to_string 1L (Decoder.varint r);
   ()
 
 let test_zigzag ctxt =

@@ -95,6 +95,11 @@ let test_errors ctxt =
   assert_raises Protobuf.Decoder.(Failure (Unexpected_payload ("s", Bits32)))
                 (fun () -> s_from_protobuf r)
 
+let test_skip ctxt =
+  let r = Protobuf.Decoder.of_string "\x15\x00\x00\xC0\x3f" in
+  assert_raises Protobuf.Decoder.(Failure (Missing_field "s"))
+                (fun () -> s_from_protobuf r)
+
 let suite = "Test primitive types" >::: [
     "test_bool"   >:: test_bool;
     "test_ints"   >:: test_ints;
@@ -102,4 +107,5 @@ let suite = "Test primitive types" >::: [
     "test_floats" >:: test_floats;
     "test_string" >:: test_string;
     "test_errors" >:: test_errors;
+    "test_skip"   >:: test_skip;
   ]

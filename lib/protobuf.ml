@@ -147,7 +147,7 @@ module Decoder = struct
     let skip_len n =
       if d.offset + n > d.limit then
         raise (Failure Incomplete);
-      d.offset <- d.offset + d.limit
+      d.offset <- d.offset + n
     in
     let rec skip_varint () =
       let b = byte d in
