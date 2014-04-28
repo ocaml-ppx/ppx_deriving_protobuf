@@ -21,7 +21,6 @@ and pb_type =
 | Pbt_uint64
 | Pbt_float
 | Pbt_string
-| Pbt_nested of pb_field list
 and pb_field = {
   pbf_name  : string;
   pbf_key   : int;
@@ -67,7 +66,6 @@ let rec string_of_pb_type kind =
   | Pbt_uint64   -> "Uint64.t"
   | Pbt_float    -> "float"
   | Pbt_string   -> "string"
-  | Pbt_nested n -> assert false
 
 let string_payload_kind_of_pb_encoding enc =
   "Protobuf." ^
@@ -96,7 +94,7 @@ let () =
     | Error (Pberr_no_key loc) ->
       Some (error ~loc "Field must include a key number, e.g. [@key 42]")
     | Error (Pberr_no_conversion (loc, kind, enc)) ->
-      Some (error ~loc (Printf.sprintf "`%s' is not a valid representation for %s"
+      Some (error ~loc (Printf.sprintf "\"%s\" is not a valid representation for %s"
                                        (string_of_pb_encoding enc)
                                        (string_of_pb_type kind)))
     | Error (Pberr_key_invalid (loc, key)) ->
@@ -160,12 +158,12 @@ let fields_of_ptype ptype =
         try  pb_encoding_of_attrs attrs
         with Not_found ->
           match pbf_kind with
-          | Pbt_bool  -> Pbe_bool
-          | Pbt_int   -> Pbe_varint
-          | Pbt_float -> Pbe_bits64
+          | Pbt_bool   -> Pbe_bool
+          | Pbt_int    -> Pbe_varint
+          | Pbt_float  -> Pbe_bits64
+          | Pbt_string -> Pbe_bytes
           | Pbt_int32  | Pbt_uint32   -> Pbe_bits32
           | Pbt_int64  | Pbt_uint64   -> Pbe_bits64
-          | Pbt_string | Pbt_nested _ -> Pbe_bytes
       in
       begin match pbf_kind, pbf_enc with
       | Pbt_bool, Pbe_bool
@@ -200,7 +198,7 @@ let derive_reader ({ ptype_name } as ptype) =
   let mk_reader pbf_enc pbf_kind reader =
     let value =
       Exp.apply (Exp.ident (lid
-          ("Protobuf.Reader." ^ (string_of_pb_encoding pbf_enc))))
+          ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))))
         ["", reader]
     in
     match pbf_kind, pbf_enc with
@@ -208,9 +206,9 @@ let derive_reader ({ ptype_name } as ptype) =
     | Pbt_bool, Pbe_bool -> value
     (* int *)
     | Pbt_int, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      Exp.apply (Exp.ident (lid "Protobuf.Reader.int_of_int64")) ["", value]
+      Exp.apply (Exp.ident (lid "Protobuf.Decoder.int_of_int64")) ["", value]
     | Pbt_int, Pbe_bits32 ->
-      Exp.apply (Exp.ident (lid "Protobuf.Reader.int_of_int32")) ["", value]
+      Exp.apply (Exp.ident (lid "Protobuf.Decoder.int_of_int32")) ["", value]
     (* int32 *)
     | Pbt_int32, Pbe_bits32 -> value
     | Pbt_int32, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
@@ -260,8 +258,8 @@ let derive_reader ({ ptype_name } as ptype) =
                                     Pat.var (loc "kind")])))
                 (Exp.apply
                   (Exp.ident (lid "raise"))
-                  ["", Exp.construct (lid "Protobuf.Reader.Error")
-                    (Some (Exp.construct (lid "Protobuf.Reader.Unexpected_payload")
+                  ["", Exp.construct (lid "Protobuf.Decoder.Failure")
+                    (Some (Exp.construct (lid "Protobuf.Decoder.Unexpected_payload")
                       (Some (Exp.tuple
                         [Exp.constant (Const_string (ptype_name.txt, None));
                          Exp.ident (lid "kind")]))))])) ::
@@ -270,13 +268,13 @@ let derive_reader ({ ptype_name } as ptype) =
   in
   let fields = fields_of_ptype ptype in
   let matcher =
-    Exp.match_ (Exp.apply (Exp.ident (lid "Protobuf.Reader.key"))
+    Exp.match_ (Exp.apply (Exp.ident (lid "Protobuf.Decoder.key"))
                           ["", Exp.ident (lid "reader")])
                ((mk_field_cases fields) @
                 [Exp.case (Pat.construct (lid "Some")
                             (Some (Pat.tuple [Pat.any (); Pat.var (loc "kind")])))
                           (Exp.sequence
-                            (Exp.apply (Exp.ident (lid "Protobuf.Reader.skip"))
+                            (Exp.apply (Exp.ident (lid "Protobuf.Decoder.skip"))
                               ["", Exp.ident (lid "reader");
                                "", Exp.ident (lid "kind")])
                             (Exp.apply (Exp.ident (lid "read"))
@@ -292,8 +290,8 @@ let derive_reader ({ ptype_name } as ptype) =
                  [Exp.case  (Pat.construct (lid "None") None)
                             (Exp.apply
                               (Exp.ident (lid "raise"))
-                              ["", Exp.construct (lid "Protobuf.Reader.Error")
-                                (Some (Exp.construct (lid "Protobuf.Reader.Missing_field")
+                              ["", Exp.construct (lid "Protobuf.Decoder.Failure")
+                                (Some (Exp.construct (lid "Protobuf.Decoder.Missing_field")
                                   (Some (Exp.constant (Const_string (ptype_name.txt, None))))))]);
                   Exp.case  (Pat.construct (lid "Some") (Some (Pat.var (loc "v"))))
                             (Exp.ident (lid "v"))]
