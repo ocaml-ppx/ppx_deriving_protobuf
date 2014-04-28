@@ -94,6 +94,22 @@ let test_option ctxt =
   let d = Protobuf.Decoder.of_string "\x08\xac\x02" in
   assert_equal (Some 300) (o_from_protobuf d)
 
+type l = int list [@@protobuf]
+let test_list ctxt =
+  let printer x = x |> List.map string_of_int |> String.concat ", " in
+  let d = Protobuf.Decoder.of_string "" in
+  assert_equal ~printer [] (l_from_protobuf d);
+  let d = Protobuf.Decoder.of_string "\x08\xac\x02\x08\x2a" in
+  assert_equal ~printer [300; 42] (l_from_protobuf d)
+
+type a = int array [@@protobuf]
+let test_array ctxt =
+  let printer x = Array.to_list x |> List.map string_of_int |> String.concat ", " in
+  let d = Protobuf.Decoder.of_string "" in
+  assert_equal ~printer [||] (a_from_protobuf d);
+  let d = Protobuf.Decoder.of_string "\x08\xac\x02\x08\x2a" in
+  assert_equal ~printer [|300; 42|] (a_from_protobuf d)
+
 let test_errors ctxt =
   let d = Protobuf.Decoder.of_string "" in
   assert_raises Protobuf.Decoder.(Failure (Missing_field "s"))
@@ -114,6 +130,8 @@ let suite = "Test primitive types" >::: [
     "test_floats" >:: test_floats;
     "test_string" >:: test_string;
     "test_option" >:: test_option;
+    "test_list"   >:: test_list;
+    "test_array"  >:: test_array;
     "test_errors" >:: test_errors;
     "test_skip"   >:: test_skip;
   ]

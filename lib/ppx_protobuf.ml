@@ -24,6 +24,7 @@ and pb_type =
 and pb_kind =
 | Pbk_required
 | Pbk_optional
+| Pbk_repeated
 and pb_field = {
   pbf_name  : string;
   pbf_key   : int;
@@ -139,6 +140,11 @@ let fields_of_ptype ptype =
       | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_optional arg
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
+    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("list" | "array") }, [arg]) } ->
+      begin match pbf_kind with
+      | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_repeated arg
+      | _ -> raise (Error (Pberr_wrong_ty ptyp))
+      end
     | { ptyp_desc = Ptyp_constr ({ txt = lid }, []); ptyp_attributes = attrs; ptyp_loc; } ->
       let pbf_type =
         match lid with
@@ -198,11 +204,17 @@ let fields_of_ptype ptype =
 let derive_reader ({ ptype_name } as ptype) =
   let rec mk_cells fields k =
     match fields with
-    | field :: rest ->
+    | { pbf_kind = (Pbk_required | Pbk_optional) } as field :: rest ->
       Exp.let_ Nonrecursive
                [Vb.mk (Pat.var (loc field.pbf_name))
                       (Exp.apply (Exp.ident (lid "ref"))
                         ["", (Exp.construct (lid "None") None)])]
+               (mk_cells rest k)
+    | { pbf_kind = Pbk_repeated } as field :: rest ->
+      Exp.let_ Nonrecursive
+               [Vb.mk (Pat.var (loc field.pbf_name))
+                      (Exp.apply (Exp.ident (lid "ref"))
+                        ["", (Exp.construct (lid "[]") None)])]
                (mk_cells rest k)
     | [] -> k
   in
@@ -251,7 +263,19 @@ let derive_reader ({ ptype_name } as ptype) =
   in
   let rec mk_field_cases fields =
     match fields with
-    | { pbf_key; pbf_name; pbf_enc; pbf_type; } as field :: rest ->
+    | { pbf_key; pbf_name; pbf_enc; pbf_type; pbf_kind } as field :: rest ->
+      let updated =
+        match pbf_kind with
+        | Pbk_required | Pbk_optional ->
+          Exp.construct (lid "Some")
+            (Some (mk_reader field (Exp.ident (lid "reader"))))
+        | Pbk_repeated ->
+          Exp.construct (lid "::")
+            (Some (Exp.tuple [
+              (mk_reader field (Exp.ident (lid "reader")));
+              (Exp.apply (Exp.ident (lid "!"))
+                ["", Exp.ident (lid pbf_name)])]))
+      in
       (Exp.case (Pat.construct (lid "Some")
                   (Some (Pat.tuple
                     [Pat.constant (Const_int pbf_key);
@@ -260,8 +284,7 @@ let derive_reader ({ ptype_name } as ptype) =
                   (Exp.apply
                     (Exp.ident (lid ":="))
                     ["", Exp.ident (lid pbf_name);
-                     "", Exp.construct (lid "Some")
-                      (Some (mk_reader field (Exp.ident (lid "reader"))))])
+                     "", updated])
                   (Exp.apply (Exp.ident (lid "read"))
                     ["", Exp.construct (lid "()") None]))) ::
       (Exp.case (Pat.construct (lid "Some")
@@ -295,9 +318,18 @@ let derive_reader ({ ptype_name } as ptype) =
   in
   let construct_ptyp pbf_name ptyp =
     match ptyp with
-    | { ptyp_desc = Ptyp_constr ({ txt = Lident "option" }, _) } ->
+    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("option") }, _) } ->
       Exp.apply (Exp.ident (lid "!"))
-                ["", Exp.ident (lid pbf_name)]
+        ["", Exp.ident (lid pbf_name)]
+    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("list") }, _) } ->
+      Exp.apply (Exp.ident (lid "List.rev"))
+        ["", Exp.apply (Exp.ident (lid "!"))
+          ["", Exp.ident (lid pbf_name)]]
+    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("array") }, _) } ->
+      Exp.apply (Exp.ident (lid "Array.of_list"))
+        ["", Exp.apply (Exp.ident (lid "List.rev"))
+          ["", Exp.apply (Exp.ident (lid "!"))
+            ["", Exp.ident (lid pbf_name)]]]
     | { ptyp_desc = Ptyp_constr _; } ->
       Exp.match_ (Exp.apply (Exp.ident (lid "!"))
                             ["", Exp.ident (lid pbf_name)])
