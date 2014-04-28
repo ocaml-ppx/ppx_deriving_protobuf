@@ -181,9 +181,15 @@ let fields_of_ptype ptype =
   in
   match ptype with
   | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
-    List.mapi (fun i ptyp -> field_of_ptyp (Some (i + 1)) (Printf.sprintf "field_%d" i) ptyp) ptyps
+    List.mapi (fun i ptyp ->
+        field_of_ptyp (Some (i + 1))
+      (Printf.sprintf "field_%d" i) ptyp) ptyps
   | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
     [field_of_ptyp (Some 1) "field" ptyp]
+  | { ptype_kind = Ptype_record fields } ->
+    List.mapi (fun i { pld_name; pld_type; } ->
+        field_of_ptyp None ("field_" ^ pld_name.txt) pld_type)
+      fields
   | _ -> assert false
 
 let derive_reader ({ ptype_name } as ptype) =
@@ -306,6 +312,9 @@ let derive_reader ({ ptype_name } as ptype) =
         construct_ptyp (Printf.sprintf "field_%d" i) ptyp) ptyps)
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
       construct_ptyp "field" ptyp
+    | { ptype_kind = Ptype_record fields; } ->
+      Exp.record (List.mapi (fun i { pld_name; pld_type; } ->
+        lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
     | _ -> assert false
   in
   let reader =
