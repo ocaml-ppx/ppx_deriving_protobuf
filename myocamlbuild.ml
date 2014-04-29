@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 6434e1cb5d8c162ae76b1b24fdd8dc97) *)
+(* DO NOT EDIT (digest: 951420f82bc4e1e5213a822fbd3158c5) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -599,7 +599,27 @@ let package_default =
      lib_c = [];
      flags =
        [
-          (["oasis_executable_test_ppx_protobuf_byte"; "ocaml"; "link"; "byte"
+          (["oasis_executable_ppx_protobuf_byte"; "ocaml"; "link"; "byte"],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
+            ]);
+          (["oasis_executable_ppx_protobuf_byte"; "ocaml"; "ocamldep"; "byte"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
+            ]);
+          (["oasis_executable_ppx_protobuf_byte"; "ocaml"; "compile"; "byte"],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
+            ]);
+          ([
+              "oasis_executable_test_ppx_protobuf_byte";
+              "ocaml";
+              "link";
+              "byte"
            ],
             [(OASISExpr.EBool true, S [A "-ppx"; A "lib/ppx_protobuf.byte"])]);
           ([
@@ -623,6 +643,6 @@ let package_default =
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default package_default;;
 
-# 627 "myocamlbuild.ml"
+# 647 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;

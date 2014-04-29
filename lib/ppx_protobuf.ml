@@ -1,9 +1,10 @@
-open Ast_mapper
-open Ast_helper
-open Asttypes
-open Parsetree
 open Longident
 open Location
+open Asttypes
+open Parsetree
+open Ast_mapper
+open Ast_helper
+open Ast_convenience
 
 type pb_encoding =
 | Pbe_bool
@@ -155,12 +156,12 @@ let pb_encoding_of_attrs attrs =
 let fields_of_ptype ptype =
   let rec field_of_ptyp pbf_name pbf_key pbf_kind ptyp =
     match ptyp with
-    | { ptyp_desc = Ptyp_constr ({ txt = Lident "option" }, [arg]) } ->
+    | [%type: [%t? arg] option ] ->
       begin match pbf_kind with
       | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_optional arg
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
-    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("list" | "array") }, [arg]) } ->
+    | [%type: [%t? arg] array ] | [%type: [%t? arg] list ] ->
       begin match pbf_kind with
       | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_repeated arg
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
@@ -242,50 +243,46 @@ let derive_reader ({ ptype_name } as ptype) =
   in
   let mk_reader { pbf_enc; pbf_type; } reader =
     let value =
-      Exp.apply (Exp.ident (mk_lid
-          ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))))
-        ["", reader]
+      let ident = Exp.ident (mk_lid ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))) in
+      [%expr [%e ident] [%e reader]]
     in
     match pbf_type, pbf_enc with
     (* bool *)
     | Pbt_bool, Pbe_bool -> value
     (* int *)
     | Pbt_int, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      Exp.apply (Exp.ident (mk_lid "Protobuf.Decoder.int_of_int64")) ["", value]
+      [%expr Protobuf.Decoder.int_of_int64 [%e value]]
     | Pbt_int, Pbe_bits32 ->
-      Exp.apply (Exp.ident (mk_lid "Protobuf.Decoder.int_of_int32")) ["", value]
+      [%expr Protobuf.Decoder.int_of_int32 [%e value]]
     (* int32 *)
     | Pbt_int32, Pbe_bits32 -> value
     | Pbt_int32, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      Exp.apply (Exp.ident (mk_lid "Int64.to_int32")) ["", value]
+      [%expr Int64.to_int32 [%e value]]
     (* int64 *)
     | Pbt_int64, (Pbe_varint | Pbe_zigzag | Pbe_bits64) -> value
     | Pbt_int64, Pbe_bits32 ->
-      Exp.apply (Exp.ident (mk_lid "Int64.of_int32")) ["", value]
+      [%expr Int64.of_int32 [%e value]]
     (* uint32 *)
     | Pbt_uint32, Pbe_bits32 ->
-      Exp.apply (Exp.ident (mk_lid "Uint32.of_int32")) ["", value]
+      [%expr Uint32.of_int32 [%e value]]
     | Pbt_uint32, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      Exp.apply (Exp.ident (mk_lid "Uint32.of_int32"))
-        ["", Exp.apply (Exp.ident (mk_lid "Int64.to_int32"))
-          ["", value]]
+      [%expr Uint32.of_int32 (Int64.to_int32 [%e value])]
     (* uint64 *)
     | Pbt_uint64, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      Exp.apply (Exp.ident (mk_lid "Uint64.of_int64")) ["", value]
+      [%expr Uint64.of_int64 [%e value]]
     | Pbt_uint64, Pbe_bits32 ->
-      Exp.apply (Exp.ident (mk_lid "Uint64.of_int32")) ["", value]
+      [%expr Uint64.of_int32 [%e value]]
     (* float *)
     | Pbt_float, Pbe_bits32 ->
-      Exp.apply (Exp.ident (mk_lid "Int32.float_of_bits")) ["", value]
+      [%expr Int32.float_of_bits [%e value]]
     | Pbt_float, Pbe_bits64 ->
-      Exp.apply (Exp.ident (mk_lid "Int64.float_of_bits")) ["", value]
+      [%expr Int64.float_of_bits [%e value]]
     (* string *)
     | Pbt_string, Pbe_bytes -> value
     (* nested *)
     | Pbt_nested lid, Pbe_bytes ->
-      Exp.apply (Exp.ident (mk_loc (mangle_lid ~suffix:"_from_protobuf" lid)))
-        ["", Exp.apply (Exp.ident (mk_lid ("Protobuf.Decoder.nested")))
-          ["", reader]]
+      let ident = Exp.ident (mk_loc (mangle_lid ~suffix:"_from_protobuf" lid)) in
+      [%expr [%e ident] (Protobuf.Decoder.nested [%e reader])]
     | _ -> assert false
   in
   let rec mk_field_cases fields =
@@ -294,80 +291,41 @@ let derive_reader ({ ptype_name } as ptype) =
       let updated =
         match pbf_kind with
         | Pbk_required | Pbk_optional ->
-          Exp.construct (mk_lid "Some")
-            (Some (mk_reader field (Exp.ident (mk_lid "reader"))))
+          [%expr Some [%e mk_reader field (evar "reader")]]
         | Pbk_repeated ->
-          Exp.construct (mk_lid "::")
-            (Some (Exp.tuple [
-              (mk_reader field (Exp.ident (mk_lid "reader")));
-              (Exp.apply (Exp.ident (mk_lid "!"))
-                ["", Exp.ident (mk_lid pbf_name)])]))
+          [%expr [%e mk_reader field (evar "reader")] :: ![%e evar pbf_name]]
       in
-      (Exp.case (Pat.construct (mk_lid "Some")
-                  (Some (Pat.tuple
-                    [Pat.constant (Const_int pbf_key);
-                      Pat.construct (mk_lid (string_payload_kind_of_pb_encoding pbf_enc)) None])))
-                (Exp.sequence
-                  (Exp.apply
-                    (Exp.ident (mk_lid ":="))
-                    ["", Exp.ident (mk_lid pbf_name);
-                     "", updated])
-                  (Exp.apply (Exp.ident (mk_lid "read"))
-                    ["", Exp.construct (mk_lid "()") None]))) ::
-      (Exp.case (Pat.construct (mk_lid "Some")
-                  (Some (Pat.tuple [Pat.constant (Const_int pbf_key);
-                                    Pat.var (mk_loc "kind")])))
-                (Exp.apply
-                  (Exp.ident (mk_lid "raise"))
-                  ["", Exp.construct (mk_lid "Protobuf.Decoder.Failure")
-                    (Some (Exp.construct (mk_lid "Protobuf.Decoder.Unexpected_payload")
-                      (Some (Exp.tuple
-                        [Exp.constant (Const_string (ptype_name.txt, None));
-                         Exp.ident (mk_lid "kind")]))))])) ::
+      let payload_enc = string_payload_kind_of_pb_encoding pbf_enc in
+      (Exp.case [%pat? Some ([%p pint pbf_key], [%p pconstr payload_enc []])]
+                [%expr [%e evar pbf_name] := [%e updated]; read ()]) ::
+      (Exp.case [%pat? Some ([%p pint pbf_key], kind)]
+                [%expr raise Protobuf.Decoder.(Failure
+                              (Unexpected_payload ([%e str ptype_name.txt], kind)))]) ::
       mk_field_cases rest
     | [] -> []
   in
   let fields = fields_of_ptype ptype in
   let matcher =
-    Exp.match_ (Exp.apply (Exp.ident (mk_lid "Protobuf.Decoder.key"))
-                          ["", Exp.ident (mk_lid "reader")])
+    Exp.match_ [%expr Protobuf.Decoder.key reader]
                ((mk_field_cases fields) @
-                [Exp.case (Pat.construct (mk_lid "Some")
-                            (Some (Pat.tuple [Pat.any (); Pat.var (mk_loc "kind")])))
-                          (Exp.sequence
-                            (Exp.apply (Exp.ident (mk_lid "Protobuf.Decoder.skip"))
-                              ["", Exp.ident (mk_lid "reader");
-                               "", Exp.ident (mk_lid "kind")])
-                            (Exp.apply (Exp.ident (mk_lid "read"))
-                              ["", Exp.construct (mk_lid "()") None]));
-                 Exp.case (Pat.construct (mk_lid "None") None)
-                          (Exp.construct (mk_lid "()") None)])
+                [Exp.case [%pat? Some (_, kind)]
+                          [%expr Protobuf.Decoder.skip reader kind; read ()];
+                 Exp.case [%pat? None] [%expr ()]])
   in
   let construct_ptyp pbf_name ptyp =
     match ptyp with
-    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("option") }, _) } ->
-      Exp.apply (Exp.ident (mk_lid "!"))
-        ["", Exp.ident (mk_lid pbf_name)]
-    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("list") }, _) } ->
-      Exp.apply (Exp.ident (mk_lid "List.rev"))
-        ["", Exp.apply (Exp.ident (mk_lid "!"))
-          ["", Exp.ident (mk_lid pbf_name)]]
-    | { ptyp_desc = Ptyp_constr ({ txt = Lident ("array") }, _) } ->
-      Exp.apply (Exp.ident (mk_lid "Array.of_list"))
-        ["", Exp.apply (Exp.ident (mk_lid "List.rev"))
-          ["", Exp.apply (Exp.ident (mk_lid "!"))
-            ["", Exp.ident (mk_lid pbf_name)]]]
+    | [%type: [%t? _] option] ->
+      [%expr ![%e evar pbf_name]]
+    | [%type: [%t? _] list] ->
+      [%expr List.rev (![%e evar pbf_name])]
+    | [%type: [%t? _] array] ->
+      [%expr Array.of_list (List.rev (![%e evar pbf_name]))]
     | { ptyp_desc = Ptyp_constr _; } ->
-      Exp.match_ (Exp.apply (Exp.ident (mk_lid "!"))
-                            ["", Exp.ident (mk_lid pbf_name)])
-                 [Exp.case  (Pat.construct (mk_lid "None") None)
-                            (Exp.apply
-                              (Exp.ident (mk_lid "raise"))
-                              ["", Exp.construct (mk_lid "Protobuf.Decoder.Failure")
-                                (Some (Exp.construct (mk_lid "Protobuf.Decoder.Missing_field")
-                                  (Some (Exp.constant (Const_string (ptype_name.txt, None))))))]);
-                  Exp.case  (Pat.construct (mk_lid "Some") (Some (Pat.var (mk_loc "v"))))
-                            (Exp.ident (mk_lid "v"))]
+      [%expr
+        match ![%e evar pbf_name] with
+        | None   -> raise Protobuf.Decoder.(Failure (Missing_field [%e str ptype_name.txt]))
+        | Some v -> v
+      ]
     | _ -> assert false
   in
   let construct_ptype ptype =
@@ -382,16 +340,11 @@ let derive_reader ({ ptype_name } as ptype) =
         mk_lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
     | _ -> assert false
   in
-  let reader =
-    mk_cells fields (
-      Exp.let_  Recursive
-                [Vb.mk  (Pat.var (mk_loc "read"))
-                        (Exp.fun_ "" None (Pat.construct (mk_lid "()") None)
-                                  matcher)]
-                        (Exp.sequence
-                          (Exp.apply (Exp.ident (mk_lid "read"))
-                                     ["", Exp.construct (mk_lid "()") None])
-                          (construct_ptype ptype)))
+  let reader = mk_cells fields
+    [%expr
+      let rec read () = [%e matcher] in
+      read (); [%e construct_ptype ptype]
+    ]
   in
   Vb.mk (Pat.var (mk_loc (ptype_name.txt ^ "_from_protobuf")))
         (Exp.fun_ "" None (Pat.var (mk_loc "reader")) reader)
@@ -408,8 +361,7 @@ let protobuf_mapper argv =
       let rec map_types items =
         match items with
         | { pstr_desc = Pstr_type ty_decls } as item :: rest when
-            (List.exists (fun { ptype_attributes = attrs } ->
-              List.exists (fun ({ txt }, _) -> txt = "protobuf") attrs) ty_decls) ->
+            List.exists (fun ty -> has_attr "protobuf" ty.ptype_attributes) ty_decls ->
           derive item @ map_types rest
         | item :: rest ->
           mapper.structure_item mapper item :: map_types rest
