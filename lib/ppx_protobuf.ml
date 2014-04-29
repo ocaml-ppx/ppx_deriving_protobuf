@@ -23,6 +23,7 @@ and pb_type =
 | Pbt_float
 | Pbt_string
 | Pbt_nested of Longident.t
+| Pbt_tuple  of core_type
 and pb_kind =
 | Pbk_required
 | Pbk_optional
@@ -44,6 +45,18 @@ type pb_error =
 | Pberr_no_conversion of Location.t * pb_type * pb_encoding
 
 exception Error of pb_error
+
+let with_formatter f =
+  let buf = Buffer.create 16 in
+  let fmt = Format.formatter_of_buffer buf in
+  f fmt;
+  Format.pp_print_flush fmt ();
+  Buffer.contents buf
+
+let string_of_core_type ptyp =
+  (with_formatter (fun fmt ->
+    (* Get rid of visual noise *)
+    Pprintast.core_type fmt { ptyp with ptyp_attributes = [] }))
 
 let string_of_lident lid =
   String.concat "." (Longident.flatten lid)
@@ -78,6 +91,7 @@ let rec string_of_pb_type kind =
   | Pbt_float  -> "float"
   | Pbt_string -> "string"
   | Pbt_nested lid -> string_of_lident lid
+  | Pbt_tuple  ty  -> string_of_core_type ty
 
 let string_payload_kind_of_pb_encoding enc =
   "Protobuf." ^
@@ -87,23 +101,13 @@ let string_payload_kind_of_pb_encoding enc =
   | Pbe_bits64 -> "Bits64"
   | Pbe_bytes  -> "Bytes"
 
-let with_formatter f =
-  let buf = Buffer.create 16 in
-  let fmt = Format.formatter_of_buffer buf in
-  f fmt;
-  Format.pp_print_flush fmt ();
-  Buffer.contents buf
-
 let () =
   Location.register_error_of_exn (fun exn ->
     match exn with
     | Error (Pberr_abstract { ptype_loc = loc }) ->
       Some (errorf ~loc "Type is abstract")
     | Error (Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp)) ->
-      Some (errorf ~loc "Type %s does not have a Protobuf mapping"
-                        (with_formatter (fun fmt ->
-                          (* Get rid of visual noise *)
-                          Pprintast.core_type fmt { ptyp with ptyp_attributes = [] })))
+      Some (errorf ~loc "Type %s does not have a Protobuf mapping" (string_of_core_type ptyp))
     | Error (Pberr_attr_syntax (loc, attr)) ->
       let name, expectation =
         match attr with
@@ -125,7 +129,6 @@ let () =
     | _ -> None)
 
 let mk_loc ?(loc=  !default_loc) v = mkloc v loc
-let mk_lid ?loc s = mk_loc ?loc (parse s)
 
 let mangle_lid ?(suffix="") lid =
   match lid with
@@ -166,6 +169,17 @@ let fields_of_ptype ptype =
       | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_repeated arg
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
+    | { ptyp_desc = Ptyp_tuple _; ptyp_attributes = attrs; ptyp_loc; } ->
+      let pbf_key =
+        try  pb_key_of_attrs attrs
+        with Not_found ->
+          match pbf_key with
+          | Some k -> k
+          | None -> raise (Error (Pberr_no_key ptyp_loc))
+      in
+      { pbf_name; pbf_key; pbf_kind;
+        pbf_enc  = Pbe_bytes;
+        pbf_type = Pbt_tuple ptyp; }
     | { ptyp_desc = Ptyp_constr ({ txt = lid }, args); ptyp_attributes = attrs; ptyp_loc; } ->
       let pbf_type =
         match args, lid with
@@ -193,9 +207,9 @@ let fields_of_ptype ptype =
           | Pbt_bool   -> Pbe_bool
           | Pbt_int    -> Pbe_varint
           | Pbt_float  -> Pbe_bits64
-          | Pbt_string | Pbt_nested _ -> Pbe_bytes
-          | Pbt_int32  | Pbt_uint32  -> Pbe_bits32
-          | Pbt_int64  | Pbt_uint64  -> Pbe_bits64
+          | Pbt_int32  | Pbt_uint32   -> Pbe_bits32
+          | Pbt_int64  | Pbt_uint64   -> Pbe_bits64
+          | Pbt_string | Pbt_nested _ | Pbt_tuple _ -> Pbe_bytes
       in
       begin match pbf_type, pbf_enc with
       | Pbt_bool, Pbe_bool
@@ -224,26 +238,27 @@ let fields_of_ptype ptype =
       field_of_ptyp ("field_" ^ pld_name.txt) None Pbk_required pld_type)
   | _ -> assert false
 
-let derive_reader ({ ptype_name } as ptype) =
+let rec derive_reader ({ ptype_name } as ptype) =
+  let rec mk_tuple_readers fields k =
+    match fields with
+    | { pbf_type = Pbt_tuple ty; pbf_name; } as field :: rest ->
+      (* Manufacture a structure element just for this tuple *)
+      Exp.let_ Nonrecursive [derive_reader (Type.mk ~manifest:ty (mk_loc pbf_name))]
+               (mk_tuple_readers rest k)
+    | _ :: rest -> mk_tuple_readers rest k
+    | [] -> k
+  in
   let rec mk_cells fields k =
     match fields with
     | { pbf_kind = (Pbk_required | Pbk_optional) } as field :: rest ->
-      Exp.let_ Nonrecursive
-               [Vb.mk (Pat.var (mk_loc field.pbf_name))
-                      (Exp.apply (Exp.ident (mk_lid "ref"))
-                        ["", (Exp.construct (mk_lid "None") None)])]
-               (mk_cells rest k)
+      [%expr let [%p pvar field.pbf_name] = ref None in [%e mk_cells rest k]]
     | { pbf_kind = Pbk_repeated } as field :: rest ->
-      Exp.let_ Nonrecursive
-               [Vb.mk (Pat.var (mk_loc field.pbf_name))
-                      (Exp.apply (Exp.ident (mk_lid "ref"))
-                        ["", (Exp.construct (mk_lid "[]") None)])]
-               (mk_cells rest k)
+      [%expr let [%p pvar field.pbf_name] = ref [] in [%e mk_cells rest k]]
     | [] -> k
   in
-  let mk_reader { pbf_enc; pbf_type; } reader =
+  let mk_reader { pbf_name; pbf_enc; pbf_type; } reader =
     let value =
-      let ident = Exp.ident (mk_lid ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))) in
+      let ident = Exp.ident (lid ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))) in
       [%expr [%e ident] [%e reader]]
     in
     match pbf_type, pbf_enc with
@@ -283,6 +298,10 @@ let derive_reader ({ ptype_name } as ptype) =
     | Pbt_nested lid, Pbe_bytes ->
       let ident = Exp.ident (mk_loc (mangle_lid ~suffix:"_from_protobuf" lid)) in
       [%expr [%e ident] (Protobuf.Decoder.nested [%e reader])]
+    (* tuple *)
+    | Pbt_tuple _, Pbe_bytes ->
+      let ident = evar (pbf_name ^ "_from_protobuf") in
+      [%expr [%e ident] (Protobuf.Decoder.nested [%e reader])]
     | _ -> assert false
   in
   let rec mk_field_cases fields =
@@ -291,7 +310,7 @@ let derive_reader ({ ptype_name } as ptype) =
       let updated =
         match pbf_kind with
         | Pbk_required | Pbk_optional ->
-          [%expr Some [%e mk_reader field (evar "reader")]]
+          [%expr Some ([%e mk_reader field (evar "reader")])]
         | Pbk_repeated ->
           [%expr [%e mk_reader field (evar "reader")] :: ![%e evar pbf_name]]
       in
@@ -320,10 +339,10 @@ let derive_reader ({ ptype_name } as ptype) =
       [%expr List.rev (![%e evar pbf_name])]
     | [%type: [%t? _] array] ->
       [%expr Array.of_list (List.rev (![%e evar pbf_name]))]
-    | { ptyp_desc = Ptyp_constr _; } ->
+    | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _); } ->
       [%expr
         match ![%e evar pbf_name] with
-        | None   -> raise Protobuf.Decoder.(Failure (Missing_field [%e str ptype_name.txt]))
+        | None   -> raise Protobuf.Decoder.(Failure (Missing_field ([%e str ptype_name.txt])))
         | Some v -> v
       ]
     | _ -> assert false
@@ -337,17 +356,19 @@ let derive_reader ({ ptype_name } as ptype) =
       construct_ptyp "field" ptyp
     | { ptype_kind = Ptype_record fields; } ->
       Exp.record (List.mapi (fun i { pld_name; pld_type; } ->
-        mk_lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
+        lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
     | _ -> assert false
   in
-  let reader = mk_cells fields
+  let reader =
     [%expr
       let rec read () = [%e matcher] in
       read (); [%e construct_ptype ptype]
-    ]
+    ] |>
+    mk_tuple_readers fields |>
+    mk_cells fields
   in
-  Vb.mk (Pat.var (mk_loc (ptype_name.txt ^ "_from_protobuf")))
-        (Exp.fun_ "" None (Pat.var (mk_loc "reader")) reader)
+  Vb.mk (pvar (ptype_name.txt ^ "_from_protobuf"))
+        [%expr fun reader -> [%e reader]]
 
 let derive item =
   match item with

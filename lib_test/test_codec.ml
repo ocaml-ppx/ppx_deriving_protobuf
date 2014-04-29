@@ -132,7 +132,7 @@ let test_nested ctxt =
   let d = Protobuf.Decoder.of_string "\x0a\x0d\x12\x08spartans\x08\xac\x02" in
   assert_equal ~printer:(fun r -> Printf.sprintf "{ a = { a = %d, b = %s } }" r.r2a.r1a r.r2a.r1b)
                { r2a = { r1a = 300; r1b = "spartans" } } (r2_from_protobuf d)
-(*
+
 type r3 = {
   r3a : (int [@encoding bits32] * string) [@key 1];
 } [@@protobuf]
@@ -140,7 +140,7 @@ let test_imm_tuple ctxt =
   let d = Protobuf.Decoder.of_string "\x0a\x0f\x12\x08spartans\x0d\x2c\x01\x00\x00" in
   assert_equal ~printer:(fun { r3a = a, b } -> Printf.sprintf "{ a = %d, %s } }" a b)
                { r3a = 300, "spartans" } (r3_from_protobuf d)
- *)
+
 let test_errors ctxt =
   let d = Protobuf.Decoder.of_string "" in
   assert_raises Protobuf.Decoder.(Failure (Missing_field "s"))
@@ -166,7 +166,8 @@ let suite = "Test primitive types" >::: [
     "test_tuple"      >:: test_tuple;
     "test_record"     >:: test_record;
     "test_nested"     >:: test_nested;
-    (* "test_imm_tuple"  >:: test_imm_tuple; *)
+    "test_imm_tuple"  >:: test_imm_tuple;
     "test_errors"     >:: test_errors;
     "test_skip"       >:: test_skip;
   ]
+
