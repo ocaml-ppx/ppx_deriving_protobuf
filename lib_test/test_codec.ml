@@ -110,6 +110,29 @@ let test_array ctxt =
   let d = Protobuf.Decoder.of_string "\x08\xac\x02\x08\x2a" in
   assert_equal ~printer [|300; 42|] (a_from_protobuf d)
 
+type t = int * string [@@protobuf]
+let test_tuple ctxt =
+  let d = Protobuf.Decoder.of_string "\x12\x08spartans\x08\xac\x02" in
+  assert_equal ~printer:(fun (x, y) -> Printf.sprintf "%d, %s" x y)
+               (300, "spartans") (t_from_protobuf d)
+
+type r1 = {
+  r1a : int    [@key 1];
+  r1b : string [@key 2];
+} [@@protobuf]
+let test_record ctxt =
+  let d = Protobuf.Decoder.of_string "\x12\x08spartans\x08\xac\x02" in
+  assert_equal ~printer:(fun r -> Printf.sprintf "{ a = %d, b = %s }" r.r1a r.r1b)
+               { r1a = 300; r1b = "spartans" } (r1_from_protobuf d)
+
+type r2 = {
+  r2a : r1 [@key 1];
+} [@@protobuf]
+let test_nested ctxt =
+  let d = Protobuf.Decoder.of_string "\x0a\x0d\x12\x08spartans\x08\xac\x02" in
+  assert_equal ~printer:(fun r -> Printf.sprintf "{ a = { a = %d, b = %s } }" r.r2a.r1a r.r2a.r1b)
+               { r2a = { r1a = 300; r1b = "spartans" } } (r2_from_protobuf d)
+
 let test_errors ctxt =
   let d = Protobuf.Decoder.of_string "" in
   assert_raises Protobuf.Decoder.(Failure (Missing_field "s"))
@@ -132,6 +155,9 @@ let suite = "Test primitive types" >::: [
     "test_option" >:: test_option;
     "test_list"   >:: test_list;
     "test_array"  >:: test_array;
+    "test_tuple"  >:: test_tuple;
+    "test_record" >:: test_record;
+    "test_nested" >:: test_nested;
     "test_errors" >:: test_errors;
     "test_skip"   >:: test_skip;
   ]
