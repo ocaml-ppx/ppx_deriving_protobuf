@@ -35,7 +35,7 @@ and pb_field = {
 
 type pb_error =
 | Pberr_wrong_ty of core_type
-| Pberr_attr_syntax of Location.t
+| Pberr_attr_syntax of Location.t * [ `Key | `Encoding ]
 | Pberr_no_key of Location.t
 | Pberr_key_invalid of Location.t * int
 | Pberr_no_conversion of Location.t * pb_type * pb_encoding
@@ -91,22 +91,26 @@ let () =
   Location.register_error_of_exn (fun exn ->
     match exn with
     | Error (Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp)) ->
-      Some (error ~loc (Printf.sprintf "Type %s does not have a Protobuf mapping"
-                                       (with_formatter (fun fmt ->
-                                          Pprintast.core_type fmt ptyp))))
-    | Error (Pberr_attr_syntax loc) ->
-      Some (error ~loc "Attribute syntax is invalid")
+      Some (errorf ~loc "Type %s does not have a Protobuf mapping"
+                        (with_formatter (fun fmt -> Pprintast.core_type fmt ptyp)))
+    | Error (Pberr_attr_syntax (loc, attr)) ->
+      let name, expectation =
+        match attr with
+        | `Key      -> "key", "a number, e.g. [@key 1]"
+        | `Encoding -> "encoding", "one of: bool, varint, zigzag, bits32, bits64, " ^
+                                   "bytes, e.g. [@encoding varint]"
+      in
+      Some (errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation)
     | Error (Pberr_no_key loc) ->
-      Some (error ~loc "Field must include a key number, e.g. [@key 42]")
+      Some (errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]")
     | Error (Pberr_no_conversion (loc, kind, enc)) ->
-      Some (error ~loc (Printf.sprintf "\"%s\" is not a valid representation for %s"
-                                       (string_of_pb_encoding enc)
-                                       (string_of_pb_type kind)))
+      Some (errorf ~loc "\"%s\" is not a valid representation for %s"
+                        (string_of_pb_encoding enc) (string_of_pb_type kind))
     | Error (Pberr_key_invalid (loc, key)) ->
       if key >= 19000 && key <= 19999 then
-        Some (error ~loc (Printf.sprintf "Key %d is in reserved range [19000:19999]" key))
+        Some (errorf ~loc "Key %d is in reserved range [19000:19999]" key)
       else
-        Some (error ~loc (Printf.sprintf "Key %d is outside of valid range [1:0x1fffffff]" key))
+        Some (errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key)
     | _ -> None)
 
 let loc v = mkloc v !default_loc
@@ -119,7 +123,7 @@ let pb_key_of_attrs attrs =
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
       raise (Error (Pberr_key_invalid (loc, key)));
     key
-  | { loc }, _ -> raise (Error (Pberr_attr_syntax loc))
+  | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Key)))
 
 let pb_encoding_of_attrs attrs =
   match List.find (fun ({ txt }, _) -> txt = "encoding") attrs with
@@ -128,9 +132,9 @@ let pb_encoding_of_attrs attrs =
     begin try
       pb_encoding_of_string kind
     with Not_found ->
-      raise (Error (Pberr_attr_syntax loc))
+      raise (Error (Pberr_attr_syntax (loc, `Encoding)))
     end
-  | { loc }, _ -> raise (Error (Pberr_attr_syntax loc))
+  | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Encoding)))
 
 let fields_of_ptype ptype =
   let rec field_of_ptyp pbf_name pbf_key pbf_kind ptyp =
