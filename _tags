@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 3982e7a757899217cef6a53915a38033)
+# DO NOT EDIT (digest: 2322fb8194002293dbaa55da206501ed)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -19,18 +19,22 @@
 "lib/ppx_protobuf.byte": oasis_executable_ppx_protobuf_byte
 <lib/*.ml{,i}>: oasis_executable_ppx_protobuf_byte
 "lib/ppx_protobuf.byte": package(compiler-libs.common)
+"lib/ppx_protobuf.byte": package(extlib)
 "lib/ppx_protobuf.byte": package(ppx_tools)
 <lib/*.ml{,i}>: package(compiler-libs.common)
+<lib/*.ml{,i}>: package(extlib)
 <lib/*.ml{,i}>: package(ppx_tools)
 # Executable test_ppx_protobuf
 "lib_test/test_ppx_protobuf.byte": oasis_executable_test_ppx_protobuf_byte
 <lib_test/*.ml{,i}>: oasis_executable_test_ppx_protobuf_byte
 "lib_test/test_ppx_protobuf.byte": package(compiler-libs.common)
+"lib_test/test_ppx_protobuf.byte": package(extlib)
 "lib_test/test_ppx_protobuf.byte": package(oUnit)
 "lib_test/test_ppx_protobuf.byte": package(ppx_tools)
 "lib_test/test_ppx_protobuf.byte": package(uint)
 "lib_test/test_ppx_protobuf.byte": use_protobuf
 <lib_test/*.ml{,i}>: package(compiler-libs.common)
+<lib_test/*.ml{,i}>: package(extlib)
 <lib_test/*.ml{,i}>: package(oUnit)
 <lib_test/*.ml{,i}>: package(ppx_tools)
 <lib_test/*.ml{,i}>: package(uint)

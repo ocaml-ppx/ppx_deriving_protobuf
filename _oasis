@@ -14,7 +14,7 @@ Library protobuf
 
 Executable ppx_protobuf
   Path:           lib
-  BuildDepends:   compiler-libs.common, ppx_tools
+  BuildDepends:   compiler-libs.common, ppx_tools, extlib
   MainIs:         ppx_protobuf.ml
   CompiledObject: byte
   ByteOpt:        -ppx 'ocamlfind ppx_tools/ppx_metaquot'

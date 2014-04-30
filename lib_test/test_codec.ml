@@ -141,13 +141,30 @@ let test_imm_tuple ctxt =
   assert_equal ~printer:(fun { r3a = a, b } -> Printf.sprintf "{ a = %d, %s } }" a b)
                { r3a = 300, "spartans" } (r3_from_protobuf d)
 
+type v1 =
+| V1A [@key 1]
+| V1B [@key 2]
+| V1C [@key 3] of int
+| V1D [@key 4] of string * string
+[@@protobuf]
+let test_variant ctxt =
+  let d = Protobuf.Decoder.of_string "\x08\x02" in
+  assert_equal V1B (v1_from_protobuf d);
+  let d = Protobuf.Decoder.of_string "\x08\x03\x20\x2a" in
+  assert_equal (V1C 42) (v1_from_protobuf d);
+  let d = Protobuf.Decoder.of_string "\x08\x04\x2a\x0a\x0a\x03foo\x12\x03bar" in
+  assert_equal (V1D ("foo", "bar")) (v1_from_protobuf d)
+
 let test_errors ctxt =
   let d = Protobuf.Decoder.of_string "" in
   assert_raises Protobuf.Decoder.(Failure (Missing_field "s"))
                 (fun () -> s_from_protobuf d);
   let d = Protobuf.Decoder.of_string "\x0d\x00\x00\xC0\x3f" in
   assert_raises Protobuf.Decoder.(Failure (Unexpected_payload ("s", Bits32)))
-                (fun () -> s_from_protobuf d)
+                (fun () -> s_from_protobuf d);
+  let d = Protobuf.Decoder.of_string "\x08\x03\x18\x1a" in
+  assert_raises Protobuf.Decoder.(Failure (Malformed_variant "v1"))
+                (fun () -> v1_from_protobuf d)
 
 let test_skip ctxt =
   let d = Protobuf.Decoder.of_string "\x15\x00\x00\xC0\x3f" in
@@ -167,7 +184,7 @@ let suite = "Test primitive types" >::: [
     "test_record"     >:: test_record;
     "test_nested"     >:: test_nested;
     "test_imm_tuple"  >:: test_imm_tuple;
+    "test_variant"    >:: test_variant;
     "test_errors"     >:: test_errors;
     "test_skip"       >:: test_skip;
   ]
-

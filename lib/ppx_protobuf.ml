@@ -22,8 +22,9 @@ and pb_type =
 | Pbt_uint64
 | Pbt_float
 | Pbt_string
-| Pbt_nested of Longident.t
-| Pbt_tuple  of core_type
+| Pbt_nested  of Longident.t
+| Pbt_tuple   of core_type
+| Pbt_variant of (int * string) list
 and pb_kind =
 | Pbk_required
 | Pbk_optional
@@ -90,8 +91,9 @@ let rec string_of_pb_type kind =
   | Pbt_uint64 -> "Uint64.t"
   | Pbt_float  -> "float"
   | Pbt_string -> "string"
-  | Pbt_nested lid -> string_of_lident lid
-  | Pbt_tuple  ty  -> string_of_core_type ty
+  | Pbt_nested  lid -> string_of_lident lid
+  | Pbt_tuple   ty  -> string_of_core_type ty
+  | Pbt_variant var -> String.concat " | " (List.map snd var)
 
 let string_payload_kind_of_pb_encoding enc =
   "Protobuf." ^
@@ -210,6 +212,7 @@ let fields_of_ptype ptype =
           | Pbt_int32  | Pbt_uint32   -> Pbe_bits32
           | Pbt_int64  | Pbt_uint64   -> Pbe_bits64
           | Pbt_string | Pbt_nested _ | Pbt_tuple _ -> Pbe_bytes
+          | Pbt_variant _ -> assert false
       in
       begin match pbf_type, pbf_enc with
       | Pbt_bool, Pbe_bool
@@ -228,21 +231,43 @@ let fields_of_ptype ptype =
   match ptype with
   | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
     ptyps |> List.mapi (fun i ptyp ->
-      field_of_ptyp (Printf.sprintf "field_%d" i) (Some (i + 1)) Pbk_required ptyp)
+      field_of_ptyp (Printf.sprintf "elem_%d" i) (Some (i + 1)) Pbk_required ptyp)
   | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
-    [field_of_ptyp "field" (Some 1) Pbk_required ptyp]
+    [field_of_ptyp "alias" (Some 1) Pbk_required ptyp]
   | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
     raise (Error (Pberr_abstract ptype))
   | { ptype_kind = Ptype_record fields } ->
     fields |> List.mapi (fun i { pld_name; pld_type; } ->
       field_of_ptyp ("field_" ^ pld_name.txt) None Pbk_required pld_type)
-  | _ -> assert false
+  | { ptype_kind = Ptype_variant constrs } ->
+    let constr_list =
+      constrs |> List.map (fun { pcd_name = { txt = name }; pcd_attributes; pcd_loc; } ->
+        let key =
+          try  pb_key_of_attrs pcd_attributes
+          with Not_found -> raise (Error (Pberr_no_key pcd_loc))
+        in key, name)
+    in
+    { pbf_name = "variant";
+      pbf_key  = 1;
+      pbf_enc  = Pbe_varint;
+      pbf_type = Pbt_variant constr_list;
+      pbf_kind = Pbk_required; } ::
+    (constrs |> ExtList.List.filter_map (fun ({ pcd_name; pcd_args; pcd_attributes; pcd_loc; }) ->
+      let ptyp =
+        match pcd_args with
+        | []    -> None
+        | [arg] -> Some arg
+        | args  -> Some (Typ.tuple args)
+      in
+      ptyp |> Option.map (fun ptyp ->
+        let key = (pb_key_of_attrs pcd_attributes) + 1 in
+        field_of_ptyp (Printf.sprintf "constr_%s" pcd_name.txt) (Some key) Pbk_required ptyp)))
 
 let rec derive_reader ({ ptype_name } as ptype) =
   let rec mk_tuple_readers fields k =
     match fields with
-    | { pbf_type = Pbt_tuple ty; pbf_name; } as field :: rest ->
-      (* Manufacture a structure element just for this tuple *)
+    | { pbf_type = Pbt_tuple ty; pbf_name; } :: rest ->
+      (* Manufacture a structure just for this tuple *)
       Exp.let_ Nonrecursive [derive_reader (Type.mk ~manifest:ty (mk_loc pbf_name))]
                (mk_tuple_readers rest k)
     | _ :: rest -> mk_tuple_readers rest k
@@ -259,7 +284,7 @@ let rec derive_reader ({ ptype_name } as ptype) =
   let mk_reader { pbf_name; pbf_enc; pbf_type; } reader =
     let value =
       let ident = Exp.ident (lid ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))) in
-      [%expr [%e ident] [%e reader]]
+      app ident [reader]
     in
     match pbf_type, pbf_enc with
     (* bool *)
@@ -302,6 +327,9 @@ let rec derive_reader ({ ptype_name } as ptype) =
     | Pbt_tuple _, Pbe_bytes ->
       let ident = evar (pbf_name ^ "_from_protobuf") in
       [%expr [%e ident] (Protobuf.Decoder.nested [%e reader])]
+    (* variant *)
+    | Pbt_variant _, Pbe_varint ->
+      [%expr Protobuf.Decoder.int_of_int64 [%e value]]
     | _ -> assert false
   in
   let rec mk_field_cases fields =
@@ -351,13 +379,50 @@ let rec derive_reader ({ ptype_name } as ptype) =
     match ptype with
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
       Exp.tuple (List.mapi (fun i ptyp ->
-        construct_ptyp (Printf.sprintf "field_%d" i) ptyp) ptyps)
+        construct_ptyp (Printf.sprintf "elem_%d" i) ptyp) ptyps)
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
-      construct_ptyp "field" ptyp
+      construct_ptyp "alias" ptyp
+    | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
+      assert false
     | { ptype_kind = Ptype_record fields; } ->
       Exp.record (List.mapi (fun i { pld_name; pld_type; } ->
         lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
-    | _ -> assert false
+    | { ptype_kind = Ptype_variant constrs; ptype_name } ->
+      let with_arg =
+        constrs |> ExtList.List.filter_map (fun pcd ->
+          match pcd with
+          | { pcd_args = [] }      -> None
+          | { pcd_name = { txt } } -> Some txt)
+      in
+      let rec mk_variant_cases constrs =
+        match constrs with
+        | { pcd_name = { txt = name }; pcd_args; pcd_attributes } :: rest ->
+          let pkey  = [%pat? Some [%p pint (pb_key_of_attrs pcd_attributes)]] in
+          let pargs = with_arg |> List.map (fun name' ->
+                        if name = name' then [%pat? Some arg] else [%pat? None]) in
+          begin match pcd_args with
+          | [] ->
+            Exp.case (ptuple (pkey :: List.map (fun _ -> [%pat? None]) with_arg))
+                     (constr name [])
+          | [arg] ->
+            Exp.case (ptuple (pkey :: pargs))
+                     (Exp.construct (lid name) (Some ([%expr arg])))
+          | args' -> (* Annoying constructor corner case *)
+            let pargs', eargs' =
+              List.mapi (fun i _ ->
+                let name = Printf.sprintf "a%d" i in pvar name, evar name) args' |>
+              List.split
+            in
+            Exp.case (ptuple (pkey :: pargs))
+                     [%expr let [%p ptuple pargs'] = arg in [%e constr name eargs']]
+          end :: mk_variant_cases rest
+        | [] ->
+          [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
+                                (Failure (Malformed_variant ([%e str ptype_name.txt])))]]
+      in
+      Exp.match_ (tuple ([%expr !variant] ::
+                         List.map (fun name -> [%expr ![%e evar ("constr_" ^ name)]]) with_arg))
+                 (mk_variant_cases constrs)
   in
   let reader =
     [%expr

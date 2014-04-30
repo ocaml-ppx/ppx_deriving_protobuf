@@ -11,6 +11,7 @@ module Decoder = struct
   | Malformed_field
   | Unexpected_payload  of string * payload_kind
   | Missing_field       of string
+  | Malformed_variant   of string
 
   let error_to_string e =
     match e with
@@ -28,6 +29,8 @@ module Decoder = struct
       Printf.sprintf "Unexpected_payload(%S, %s)" field kind'
     | Missing_field field ->
       Printf.sprintf "Missing_field(%S)" field
+    | Malformed_variant name ->
+      Printf.sprintf "Malformed_variant(%S)" name
 
   exception Failure of error
 

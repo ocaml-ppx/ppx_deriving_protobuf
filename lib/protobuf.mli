@@ -13,6 +13,7 @@ module Decoder : sig
   | Malformed_field
   | Unexpected_payload of string * payload_kind
   | Missing_field      of string
+  | Malformed_variant  of string
 
   (** [error_to_string e] converts error [e] to its string representation. *)
   val error_to_string : error -> string

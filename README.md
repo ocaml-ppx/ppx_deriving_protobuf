@@ -222,13 +222,6 @@ type search_request' = string * int option * int option [@@protobuf]
 Additionally, a tuple can be used in any context where a scalar value is expected;
 in this case, it is equivalent to an anonymous inner message:
 
-``` ocaml
-type nested = {
-  foo : int                     [@key 1];
-  bar : (string * float) option [@key 2];
-} [@@protobuf]
-```
-
 ``` protoc
 message Nested {
   message StringFloatPair {
@@ -238,6 +231,54 @@ message Nested {
   required int32 foo = 1;
   optional StringFloatPair bar = 2;
 }
+```
+
+``` ocaml
+type nested = {
+  foo : int                     [@key 1];
+  bar : (string * float) option [@key 2];
+} [@@protobuf]
+```
+
+### Variants
+
+An OCaml variant types is normally mapped to an entire Protobuf message by _ppx_protobuf_,
+as opposed to _protoc_, which maps an `enum` to a simple varint. This is done because
+OCaml constructors can have arguments, but _protoc_'s `enum`s can not.
+
+Note that even if a type doesn't have any constructor with arguments, it is still mapped
+to a message, because it would not be possible to extend the type later with a constructor
+with arguments otherwise.
+
+Every constructor must have an explicitly specified key; if the constructor has one argument,
+it is mapped to an optional field with the key corresponding to the key of the constructor
+plus one. If there is more than one argument, they're treated like a tuple.
+
+Consider this example:
+
+``` protoc
+message Variant {
+  enum T {
+    A = 1;
+    B = 2;
+    C = 3;
+  }
+  message C {
+    required string foo = 1;
+    required string bar = 1;
+  }
+  required T t = 1;
+  optional int32 b = 3; // (B = 2) + 1
+  optional C c = 4; // (C = 3) + 1
+}
+```
+
+``` ocaml
+type variant =
+| A [@key 1]
+| B [@key 2] of int
+| C [@key 3] of string * string
+[@@protobuf]
 ```
 
 ### Type aliases
