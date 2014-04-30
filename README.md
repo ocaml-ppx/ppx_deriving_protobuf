@@ -355,6 +355,25 @@ The generated deserializer code will refer to `bar_from_protobuf` and
 `Baz.Quux.t_from_protobuf`; the serializer code will call `bar_to_protobuf`
 and `Baz.Quux.t_to_protobuf`.
 
+Error handling
+--------------
+
+TODO: describe
+
+Compatibility
+-------------
+
+Protocol Buffers specification [suggests][merge] that if a message contains
+multiple instances of a `required` or `optional` nested message, those nested
+messages should be merged. However, there is no concept of "merging messages"
+accessible to _ppx_protobuf_, and this feature can be considered harmful anyway:
+it is far too forgiving of invalid input. Thus, _ppx_protobuf_ doesn't implement
+this merging.
+
+Everything else should be entirely compatible with _protoc_.
+
+[merge]: https://developers.google.com/protocol-buffers/docs/encoding#optional
+
 License
 -------
 
