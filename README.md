@@ -51,8 +51,8 @@ code based on _protoc_ definitions. Instead, it generates code based on OCaml ty
 definitions.
 
 _ppx_protobuf_-generated serializers are derived from the structure of the type
-and two attributes: `@key` and `@encoding`. Generation of the serializer is
-triggered by a `@@protobuf` attribute attached to the type definition.
+and several attributes: `@key`, `@encoding` and `@bare`. Generation of the serializer
+is triggered by a `@@protobuf` attribute attached to the type definition.
 
 _ppx_protobuf_ generates two functions per type:
 
@@ -243,7 +243,7 @@ type nested = {
 ### Variants
 
 An OCaml variant types is normally mapped to an entire Protobuf message by _ppx_protobuf_,
-as opposed to _protoc_, which maps an `enum` to a simple varint. This is done because
+as opposed to _protoc_, which maps an `enum` to a simple `varint`. This is done because
 OCaml constructors can have arguments, but _protoc_'s `enum`s can not.
 
 Note that even if a type doesn't have any constructor with arguments, it is still mapped
@@ -280,6 +280,45 @@ type variant =
 | C [@key 3] of string * string
 [@@protobuf]
 ```
+
+Note that decoder considers messages which contain more than one optional field
+invalid and rejects them.
+
+In order to achieve better compatibility with _protoc_, it is possible to embed
+a variant where no constructors have arguments without wrapping it in a message:
+
+``` protoc
+enum BareVariant {
+  A = 1;
+  B = 2;
+}
+message Container {
+  required T value = 1;
+}
+```
+
+``` ocaml
+type bare_variant =
+| A [@key 1]
+| B [@key 2]
+and container = {
+  value : bare_variant [@key 1] [@bare];
+} [@@protobuf]
+```
+
+In practice, if a variant has no constructors with arguments, additional two
+functions are generated with the following signatures:
+
+``` ocaml
+type t = A | B | ... [@@protobuf]
+val t_from_protobuf_bare : Protobuf.Decoder.t -> t
+val t_to_protobuf_bare   : Protobuf.Encoder.t -> t -> unit
+```
+
+These functions do not expect additional framing; they just parse or serialize
+a single `varint`.
+
+### Polymorphic variants
 
 Polymorphic variants are currently not supported; see [bug #6387][b6387].
 

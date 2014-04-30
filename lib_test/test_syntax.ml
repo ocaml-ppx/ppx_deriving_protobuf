@@ -155,6 +155,17 @@ let test_variant ctxt =
   let d = Protobuf.Decoder.of_string "\x08\x04\x2a\x0a\x0a\x03foo\x12\x03bar" in
   assert_equal (V1D ("foo", "bar")) (v1_from_protobuf d)
 
+type v2 =
+| V2A [@key 1]
+| V2B [@key 2]
+and r4 = {
+  r4a : v2 [@key 1] [@bare]
+}
+[@@protobuf]
+let test_variant_bare ctxt =
+  let d = Protobuf.Decoder.of_string "\x08\x02" in
+  assert_equal { r4a = V2B } (r4_from_protobuf d)
+
 let test_errors ctxt =
   (* scalars *)
   let d = Protobuf.Decoder.of_string "" in
@@ -182,19 +193,20 @@ let test_skip ctxt =
                 (fun () -> s_from_protobuf d)
 
 let suite = "Test primitive types" >::: [
-    "test_bool"       >:: test_bool;
-    "test_ints"       >:: test_ints;
-    "test_uints"      >:: test_uints;
-    "test_floats"     >:: test_floats;
-    "test_string"     >:: test_string;
-    "test_option"     >:: test_option;
-    "test_list"       >:: test_list;
-    "test_array"      >:: test_array;
-    "test_tuple"      >:: test_tuple;
-    "test_record"     >:: test_record;
-    "test_nested"     >:: test_nested;
-    "test_imm_tuple"  >:: test_imm_tuple;
-    "test_variant"    >:: test_variant;
-    "test_errors"     >:: test_errors;
-    "test_skip"       >:: test_skip;
+    "test_bool"         >:: test_bool;
+    "test_ints"         >:: test_ints;
+    "test_uints"        >:: test_uints;
+    "test_floats"       >:: test_floats;
+    "test_string"       >:: test_string;
+    "test_option"       >:: test_option;
+    "test_list"         >:: test_list;
+    "test_array"        >:: test_array;
+    "test_tuple"        >:: test_tuple;
+    "test_record"       >:: test_record;
+    "test_nested"       >:: test_nested;
+    "test_imm_tuple"    >:: test_imm_tuple;
+    "test_variant"      >:: test_variant;
+    "test_variant_bare" >:: test_variant_bare;
+    "test_errors"       >:: test_errors;
+    "test_skip"         >:: test_skip;
   ]

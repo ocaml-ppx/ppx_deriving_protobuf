@@ -1,3 +1,4 @@
  * encoders
- * bare enums
  * parametric polymorphism
+ * Unknown_ variant
+ * Polymorphic variants
