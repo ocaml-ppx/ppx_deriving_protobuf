@@ -56,6 +56,11 @@ module Decoder = struct
       raise (Failure Overflow);
     Int64.to_int v
 
+  let int32_of_int64 v =
+    if (Int64.shift_right v 32) <> Int64.zero then
+      raise (Failure Overflow);
+    Int64.to_int32 v
+
   let of_string source =
     { source; offset = 0; limit = String.length source; }
 

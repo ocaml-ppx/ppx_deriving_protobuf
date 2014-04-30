@@ -1,8 +1,8 @@
 open OUnit2
 
 let suite = "Test ppx_protobuf" >::: [
-    Test_protobuf.suite;
-    Test_codec.suite;
+    Test_wire.suite;
+    Test_syntax.suite;
   ]
 
 let _ =

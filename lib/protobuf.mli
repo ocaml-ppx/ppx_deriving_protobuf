@@ -71,10 +71,15 @@ module Decoder : sig
   (** [int_of_int32 v] returns [v] truncated to [int].
       If the value doesn't fit in the range of [int], raises
       [Failure Overflow]. *)
-  val int_of_int32  : int32 -> int
+  val int_of_int32    : int32 -> int
 
   (** [int_of_int64 v] returns [v] truncated to [int].
       If the value doesn't fit in the range of [int], raises
       [Failure Overflow]. *)
-  val int_of_int64  : int64 -> int
+  val int_of_int64    : int64 -> int
+
+  (** [int32_of_int64 v] returns [v] truncated to [int32].
+      If the value doesn't fit in the range of [int32], raises
+      [Failure Overflow]. *)
+  val int32_of_int64  : int64 -> int32
 end

@@ -130,8 +130,6 @@ let () =
         Some (errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key)
     | _ -> None)
 
-let mk_loc ?(loc=  !default_loc) v = mkloc v loc
-
 let mangle_lid ?(suffix="") lid =
   match lid with
   | Lident s    -> Lident (s ^ suffix)
@@ -268,7 +266,7 @@ let rec derive_reader ({ ptype_name } as ptype) =
     match fields with
     | { pbf_type = Pbt_tuple ty; pbf_name; } :: rest ->
       (* Manufacture a structure just for this tuple *)
-      Exp.let_ Nonrecursive [derive_reader (Type.mk ~manifest:ty (mk_loc pbf_name))]
+      Exp.let_ Nonrecursive [derive_reader (Type.mk ~manifest:ty (mkloc pbf_name !default_loc))]
                (mk_tuple_readers rest k)
     | _ :: rest -> mk_tuple_readers rest k
     | [] -> k
@@ -297,7 +295,7 @@ let rec derive_reader ({ ptype_name } as ptype) =
     (* int32 *)
     | Pbt_int32, Pbe_bits32 -> value
     | Pbt_int32, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      [%expr Int64.to_int32 [%e value]]
+      [%expr Protobuf.Decoder.int32_of_int64 [%e value]]
     (* int64 *)
     | Pbt_int64, (Pbe_varint | Pbe_zigzag | Pbe_bits64) -> value
     | Pbt_int64, Pbe_bits32 ->
@@ -306,7 +304,7 @@ let rec derive_reader ({ ptype_name } as ptype) =
     | Pbt_uint32, Pbe_bits32 ->
       [%expr Uint32.of_int32 [%e value]]
     | Pbt_uint32, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      [%expr Uint32.of_int32 (Int64.to_int32 [%e value])]
+      [%expr Uint32.of_int32 (Protobuf.Decoder.int32_of_int64 [%e value])]
     (* uint64 *)
     | Pbt_uint64, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
       [%expr Uint64.of_int64 [%e value]]
@@ -321,7 +319,7 @@ let rec derive_reader ({ ptype_name } as ptype) =
     | Pbt_string, Pbe_bytes -> value
     (* nested *)
     | Pbt_nested lid, Pbe_bytes ->
-      let ident = Exp.ident (mk_loc (mangle_lid ~suffix:"_from_protobuf" lid)) in
+      let ident = Exp.ident (mkloc (mangle_lid ~suffix:"_from_protobuf" lid) !default_loc) in
       [%expr [%e ident] (Protobuf.Decoder.nested [%e reader])]
     (* tuple *)
     | Pbt_tuple _, Pbe_bytes ->

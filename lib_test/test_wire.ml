@@ -47,9 +47,13 @@ let test_zigzag ctxt =
 let test_overflow ctxt =
   if Sys.word_size = 32 then
     assert_raises Decoder.(Failure Overflow)
-                  (fun () -> Decoder.int_of_int32 0xffffffffl);
+                  (fun () -> Decoder.int_of_int32 0xffffffffl)
+  else
+    assert_equal (-1) (Decoder.int_of_int32 0xffffffffl);
   assert_raises Decoder.(Failure Overflow)
                 (fun () -> Decoder.int_of_int64 0xffffffffffffffffL);
+  assert_raises Decoder.(Failure Overflow)
+                (fun () -> Decoder.int32_of_int64 0x1ffffffffL);
   ()
 
 let suite = "Test Protobuf" >::: [

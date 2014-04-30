@@ -281,6 +281,10 @@ type variant =
 [@@protobuf]
 ```
 
+Polymorphic variants are currently not supported; see [bug #6387][b6387].
+
+[b6387]: http://caml.inria.fr/mantis/view.php?id=6387
+
 ### Type aliases
 
 A type alias (statement of form `type a = b`) is treated by _ppx_protobuf_ as
