@@ -35,14 +35,16 @@ and pb_field = {
   pbf_enc   : pb_encoding;
   pbf_type  : pb_type;
   pbf_kind  : pb_kind;
+  pbf_loc   : Location.t;
 }
 
 type pb_error =
-| Pberr_abstract of type_declaration
-| Pberr_wrong_ty of core_type
-| Pberr_attr_syntax of Location.t * [ `Key | `Encoding ]
-| Pberr_no_key of Location.t
-| Pberr_key_invalid of Location.t * int
+| Pberr_attr_syntax   of Location.t * [ `Key | `Encoding ]
+| Pberr_no_key        of Location.t
+| Pberr_key_invalid   of Location.t * int
+| Pberr_key_duplicate of int * Location.t * Location.t
+| Pberr_abstract      of type_declaration
+| Pberr_wrong_ty      of core_type
 | Pberr_no_conversion of Location.t * pb_type * pb_encoding
 
 exception Error of pb_error
@@ -106,10 +108,6 @@ let string_payload_kind_of_pb_encoding enc =
 let () =
   Location.register_error_of_exn (fun exn ->
     match exn with
-    | Error (Pberr_abstract { ptype_loc = loc }) ->
-      Some (errorf ~loc "Type is abstract")
-    | Error (Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp)) ->
-      Some (errorf ~loc "Type %s does not have a Protobuf mapping" (string_of_core_type ptyp))
     | Error (Pberr_attr_syntax (loc, attr)) ->
       let name, expectation =
         match attr with
@@ -120,14 +118,21 @@ let () =
       Some (errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation)
     | Error (Pberr_no_key loc) ->
       Some (errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]")
-    | Error (Pberr_no_conversion (loc, kind, enc)) ->
-      Some (errorf ~loc "\"%s\" is not a valid representation for %s"
-                        (string_of_pb_encoding enc) (string_of_pb_type kind))
     | Error (Pberr_key_invalid (loc, key)) ->
       if key >= 19000 && key <= 19999 then
         Some (errorf ~loc "Key %d is in reserved range [19000:19999]" key)
       else
         Some (errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key)
+    | Error (Pberr_key_duplicate (key, loc1, loc2)) ->
+      Some (errorf ~loc:loc1 "Key %d is already used" key
+                   ~sub:[errorf ~loc:loc2 "Initially defined here"])
+    | Error (Pberr_abstract { ptype_loc = loc }) ->
+      Some (errorf ~loc "Type is abstract")
+    | Error (Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp)) ->
+      Some (errorf ~loc "Type %s does not have a Protobuf mapping" (string_of_core_type ptyp))
+    | Error (Pberr_no_conversion (loc, kind, enc)) ->
+      Some (errorf ~loc "\"%s\" is not a valid representation for %s"
+                        (string_of_pb_encoding enc) (string_of_pb_type kind))
     | _ -> None)
 
 let mangle_lid ?(suffix="") lid =
@@ -179,7 +184,8 @@ let fields_of_ptype ptype =
       in
       { pbf_name; pbf_key; pbf_kind;
         pbf_enc  = Pbe_bytes;
-        pbf_type = Pbt_tuple ptyp; }
+        pbf_type = Pbt_tuple ptyp;
+        pbf_loc  = ptyp_loc; }
     | { ptyp_desc = Ptyp_constr ({ txt = lid }, args); ptyp_attributes = attrs; ptyp_loc; } ->
       let pbf_type =
         match args, lid with
@@ -218,7 +224,8 @@ let fields_of_ptype ptype =
         (Pbe_varint | Pbe_zigzag | Pbe_bits32 | Pbe_bits64)
       | Pbt_float, (Pbe_bits32 | Pbe_bits64)
       | (Pbt_string | Pbt_nested _), Pbe_bytes ->
-        { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind; }
+        { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind;
+          pbf_loc = ptyp_loc; }
       | _ ->
         raise (Error (Pberr_no_conversion (ptyp_loc, pbf_type, pbf_enc)))
       end
@@ -226,40 +233,53 @@ let fields_of_ptype ptype =
       field_of_ptyp pbf_name pbf_key pbf_kind ptyp'
     | ptyp -> raise (Error (Pberr_wrong_ty ptyp))
   in
-  match ptype with
-  | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
-    ptyps |> List.mapi (fun i ptyp ->
-      field_of_ptyp (Printf.sprintf "elem_%d" i) (Some (i + 1)) Pbk_required ptyp)
-  | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
-    [field_of_ptyp "alias" (Some 1) Pbk_required ptyp]
-  | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
-    raise (Error (Pberr_abstract ptype))
-  | { ptype_kind = Ptype_record fields } ->
-    fields |> List.mapi (fun i { pld_name; pld_type; } ->
-      field_of_ptyp ("field_" ^ pld_name.txt) None Pbk_required pld_type)
-  | { ptype_kind = Ptype_variant constrs } ->
-    let constr_list =
-      constrs |> List.map (fun { pcd_name = { txt = name }; pcd_attributes; pcd_loc; } ->
-        let key =
-          try  pb_key_of_attrs pcd_attributes
-          with Not_found -> raise (Error (Pberr_no_key pcd_loc))
-        in key, name)
-    in
-    { pbf_name = "variant";
-      pbf_key  = 1;
-      pbf_enc  = Pbe_varint;
-      pbf_type = Pbt_variant constr_list;
-      pbf_kind = Pbk_required; } ::
-    (constrs |> ExtList.List.filter_map (fun ({ pcd_name; pcd_args; pcd_attributes; pcd_loc; }) ->
-      let ptyp =
-        match pcd_args with
-        | []    -> None
-        | [arg] -> Some arg
-        | args  -> Some (Typ.tuple args)
+  let fields =
+    match ptype with
+    | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
+      ptyps |> List.mapi (fun i ptyp ->
+        field_of_ptyp (Printf.sprintf "elem_%d" i) (Some (i + 1)) Pbk_required ptyp)
+    | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
+      [field_of_ptyp "alias" (Some 1) Pbk_required ptyp]
+    | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
+      raise (Error (Pberr_abstract ptype))
+    | { ptype_kind = Ptype_record fields } ->
+      fields |> List.mapi (fun i { pld_name; pld_type; } ->
+        field_of_ptyp ("field_" ^ pld_name.txt) None Pbk_required pld_type)
+    | { ptype_kind = Ptype_variant constrs; ptype_loc } ->
+      let constrs' =
+        constrs |> List.map (fun ({ pcd_attributes; pcd_loc; } as pcd) ->
+          let key =
+            try  pb_key_of_attrs pcd_attributes
+            with Not_found -> raise (Error (Pberr_no_key pcd_loc))
+          in key, pcd)
       in
-      ptyp |> Option.map (fun ptyp ->
-        let key = (pb_key_of_attrs pcd_attributes) + 1 in
-        field_of_ptyp (Printf.sprintf "constr_%s" pcd_name.txt) (Some key) Pbk_required ptyp)))
+      constrs' |> List.iter (fun (key, { pcd_loc } as pcd) ->
+        constrs' |> List.iter (fun (key', { pcd_loc = pcd_loc' } as pcd') ->
+          if pcd != pcd' && key = key' then
+            raise (Error (Pberr_key_duplicate (key, pcd_loc', pcd_loc)))));
+      { pbf_name = "variant";
+        pbf_key  = 1;
+        pbf_enc  = Pbe_varint;
+        pbf_type = Pbt_variant (constrs' |>
+              List.map (fun (key, { pcd_name = { txt = name } }) -> key, name));
+        pbf_kind = Pbk_required;
+        pbf_loc  = ptype_loc; } ::
+      (constrs |> ExtList.List.filter_map (fun ({ pcd_name; pcd_args; pcd_attributes; pcd_loc; }) ->
+        let ptyp =
+          match pcd_args with
+          | []    -> None
+          | [arg] -> Some arg
+          | args  -> Some (Typ.tuple args)
+        in
+        ptyp |> Option.map (fun ptyp ->
+          let key = (pb_key_of_attrs pcd_attributes) + 1 in
+          field_of_ptyp (Printf.sprintf "constr_%s" pcd_name.txt) (Some key) Pbk_required ptyp)))
+  in
+  fields |> List.iter (fun field ->
+    fields |> List.iter (fun field' ->
+      if field != field' && field.pbf_key = field'.pbf_key then
+        raise (Error (Pberr_key_duplicate (field.pbf_key, field'.pbf_loc, field.pbf_loc)))));
+  fields
 
 let rec derive_reader ({ ptype_name } as ptype) =
   let rec mk_tuple_readers fields k =
