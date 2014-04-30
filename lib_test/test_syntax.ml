@@ -160,11 +160,28 @@ type v2 =
 | V2B [@key 2]
 and r4 = {
   r4a : v2 [@key 1] [@bare]
-}
-[@@protobuf]
+} [@@protobuf]
 let test_variant_bare ctxt =
   let d = Protobuf.Decoder.of_string "\x08\x02" in
   assert_equal { r4a = V2B } (r4_from_protobuf d)
+
+type 'a r5 = {
+  r5a: 'a [@key 1]
+} [@@protobuf]
+let test_tvar ctxt =
+  let d = Protobuf.Decoder.of_string "\x0a\x02\x08\x01" in
+  assert_equal { r5a = 1 } (r5_from_protobuf i1_from_protobuf d)
+
+type 'a mylist =
+| Nil  [@key 1]
+| Cons [@key 2] of 'a * 'a mylist
+[@@protobuf]
+let test_mylist ctxt =
+  let d = Protobuf.Decoder.of_string ("\x12\x01\x8a\x16\x80\x01\x12\x12\x12\x01" ^
+                                      "\x8a\x0e\x80\x02\x12\x0a\x12\x01\x8a\x06" ^
+                                      "\x80\x03\x12\x02\x08\x01") in
+  assert_equal (Cons (1, (Cons (2, (Cons (3, Nil))))))
+               (mylist_from_protobuf i1_from_protobuf d)
 
 let test_errors ctxt =
   (* scalars *)
@@ -207,6 +224,7 @@ let suite = "Test primitive types" >::: [
     "test_imm_tuple"    >:: test_imm_tuple;
     "test_variant"      >:: test_variant;
     "test_variant_bare" >:: test_variant_bare;
+    "test_tvar"         >:: test_tvar;
     "test_errors"       >:: test_errors;
     "test_skip"         >:: test_skip;
   ]

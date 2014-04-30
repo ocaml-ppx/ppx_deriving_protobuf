@@ -355,8 +355,48 @@ The generated deserializer code will refer to `bar_from_protobuf` and
 `Baz.Quux.t_from_protobuf`; the serializer code will call `bar_to_protobuf`
 and `Baz.Quux.t_to_protobuf`.
 
+### Parametric polymorphism
+
+_ppx_protobuf_ is able to handle polymorphic type definitions. In this case,
+the serializing or deserializing function will accept one additional argument
+for every type variable; correspondingly, the value of this argument will be
+passed to serializer or deserializer of any nested parametric type.
+
+Consider this example:
+
+``` ocaml
+type 'a mylist =
+| Nil  [@key 1]
+| Cons [@key 2] of 'a * 'a mylist
+[@@protobuf]
+```
+
+Here, the following functions will be generated:
+
+``` ocaml
+val mylist_from_protobuf : (Protobuf.Decoder.t -> 'a) -> Protobuf.Decoder.t ->
+                           'a mylist
+val mylist_to_protobuf   : (Protobuf.Decoder.t -> 'a -> unit) -> Protobuf.Decoder.t ->
+                           'a mylist -> unit
+```
+
+An example usage would be:
+
+``` ocaml
+type a = int [@@protobuf]
+
+let get_ints message =
+  let decoder = Protobuf.Decoder.of_string message in
+  mylist_from_protobuf a_from_protobuf decoder
+```
+
 Error handling
 --------------
+
+TODO: describe
+
+Extending protocols
+-------------------
 
 TODO: describe
 

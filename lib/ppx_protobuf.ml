@@ -22,9 +22,10 @@ and pb_type =
 | Pbt_uint64
 | Pbt_float
 | Pbt_string
-| Pbt_nested  of Longident.t
 | Pbt_tuple   of core_type
 | Pbt_variant of (int * string) list
+| Pbt_nested  of core_type list * Longident.t
+| Pbt_poly    of string
 and pb_kind =
 | Pbk_required
 | Pbk_optional
@@ -46,6 +47,7 @@ type pb_error =
 | Pberr_key_duplicate of int * Location.t * Location.t
 | Pberr_abstract      of type_declaration
 | Pberr_wrong_ty      of core_type
+| Pberr_wrong_tparm   of core_type
 | Pberr_no_conversion of Location.t * pb_type * pb_encoding
 
 exception Error of pb_error
@@ -94,9 +96,16 @@ let rec string_of_pb_type kind =
   | Pbt_uint64 -> "Uint64.t"
   | Pbt_float  -> "float"
   | Pbt_string -> "string"
-  | Pbt_nested  lid -> string_of_lident lid
-  | Pbt_tuple   ty  -> string_of_core_type ty
-  | Pbt_variant var -> String.concat " | " (List.map snd var)
+  | Pbt_tuple ptyp ->
+    string_of_core_type ptyp
+  | Pbt_variant constrs ->
+    String.concat " | " (List.map snd constrs)
+  | Pbt_nested (args, lid) ->
+    begin match args with
+    | []   -> ""
+    | args -> Printf.sprintf "(%s) " (String.concat ", " (List.map string_of_core_type args))
+    end ^ string_of_lident lid
+  | Pbt_poly var -> "'" ^ var
 
 let string_payload_kind_of_pb_encoding enc =
   "Protobuf." ^
@@ -132,6 +141,8 @@ let () =
       Some (errorf ~loc "Type is abstract")
     | Error (Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp)) ->
       Some (errorf ~loc "Type %s does not have a Protobuf mapping" (string_of_core_type ptyp))
+    | Error (Pberr_wrong_tparm ({ ptyp_loc = loc } as ptyp)) ->
+      Some (errorf ~loc "Type %s cannot be used as a type parameter" (string_of_core_type ptyp))
     | Error (Pberr_no_conversion (loc, kind, enc)) ->
       Some (errorf ~loc "\"%s\" is not a valid representation for %s"
                         (string_of_pb_encoding enc) (string_of_pb_type kind))
@@ -181,7 +192,7 @@ let fields_of_ptype base_path ptype =
       | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated arg
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
-    | { ptyp_desc = Ptyp_tuple _; ptyp_attributes = attrs; ptyp_loc; } ->
+    | { ptyp_desc = (Ptyp_tuple _ | Ptyp_var _) as desc; ptyp_attributes = attrs; ptyp_loc; } ->
       let pbf_key =
         try  pb_key_of_attrs attrs
         with Not_found ->
@@ -189,9 +200,14 @@ let fields_of_ptype base_path ptype =
           | Some k -> k
           | None -> raise (Error (Pberr_no_key ptyp_loc))
       in
-      { pbf_name; pbf_key; pbf_kind; pbf_path;
+      let pbf_type =
+        match desc with
+        | Ptyp_tuple _ -> Pbt_tuple ptyp
+        | Ptyp_var var -> Pbt_poly var
+        | _ -> assert false
+      in
+      { pbf_name; pbf_key; pbf_kind; pbf_path; pbf_type;
         pbf_enc  = Pbe_bytes;
-        pbf_type = Pbt_tuple ptyp;
         pbf_loc  = ptyp_loc; }
     | { ptyp_desc = Ptyp_constr ({ txt = lid }, args); ptyp_attributes = attrs; ptyp_loc; } ->
       let pbf_type =
@@ -204,7 +220,7 @@ let fields_of_ptype base_path ptype =
         | [], (Lident "int64"  | Ldot (Lident "Int64", "t"))  -> Pbt_int64
         | [], (Lident "uint32" | Ldot (Lident "Uint32", "t")) -> Pbt_uint32
         | [], (Lident "uint64" | Ldot (Lident "Uint64", "t")) -> Pbt_uint64
-        | _,  lident -> Pbt_nested lident
+        | _,  lident -> Pbt_nested (args, lident)
       in
       let pbf_key =
         try  pb_key_of_attrs attrs
@@ -222,7 +238,7 @@ let fields_of_ptype base_path ptype =
           | Pbt_float  -> Pbe_bits64
           | Pbt_int32  | Pbt_uint32  -> Pbe_bits32
           | Pbt_int64  | Pbt_uint64  -> Pbe_bits64
-          | Pbt_string | Pbt_tuple _ -> Pbe_bytes
+          | Pbt_string | Pbt_tuple _ | Pbt_poly _ -> Pbe_bytes
           | Pbt_nested _ ->
             begin
               try  pb_bare_of_attrs attrs; Pbe_varint
@@ -357,10 +373,15 @@ let rec derive_reader fields ptype =
     (* string *)
     | Pbt_string, Pbe_bytes -> value
     (* nested *)
-    | Pbt_nested lid, Pbe_bytes ->
+    | Pbt_nested (args, lid), Pbe_bytes ->
       let ident = Exp.ident (mkloc (mangle_lid ~suffix:"_from_protobuf" lid) !default_loc) in
-      [%expr [%e ident] (Protobuf.Decoder.nested decoder)]
-    | Pbt_nested lid, Pbe_varint -> (* bare enum *)
+      let args' = args |> List.map (fun ptyp ->
+        match ptyp with
+        | { ptyp_desc = Ptyp_var tvar } -> evar ("poly_" ^ tvar)
+        | _ -> raise (Error (Pberr_wrong_tparm ptyp)))
+      in
+      app ident (args' @ [[%expr Protobuf.Decoder.nested decoder]])
+    | Pbt_nested ([], lid), Pbe_varint -> (* bare enum *)
       let ident = Exp.ident (mkloc (mangle_lid ~suffix:"_from_protobuf_bare" lid) !default_loc) in
       [%expr [%e ident] decoder]
     (* tuple *)
@@ -369,6 +390,9 @@ let rec derive_reader fields ptype =
       [%expr [%e ident] (Protobuf.Decoder.nested decoder)]
     (* variant *)
     | Pbt_variant _, Pbe_varint -> value
+    (* poly *)
+    | Pbt_poly var, Pbe_bytes ->
+      [%expr [%e evar ("poly_" ^ var)] (Protobuf.Decoder.nested decoder)]
     | _ -> assert false
   in
   let rec mk_field_cases fields =
@@ -406,7 +430,7 @@ let rec derive_reader fields ptype =
       [%expr List.rev (![%e evar pbf_name])]
     | [%type: [%t? _] array] ->
       [%expr Array.of_list (List.rev (![%e evar pbf_name]))]
-    | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _); } ->
+    | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _ | Ptyp_var _); } ->
       [%expr
         match ![%e evar pbf_name] with
         | None   -> raise Protobuf.Decoder.(Failure (Missing_field ([%e str pbf_path])))
@@ -464,13 +488,20 @@ let rec derive_reader fields ptype =
                          List.map (fun name -> [%expr ![%e evar ("constr_" ^ name)]]) with_arg))
                  (mk_variant_cases constrs)
   in
+  let rec mk_poly tvars k =
+    match tvars with
+    | (Some { txt }, _) :: rest ->
+      [%expr fun [%p pvar ("poly_" ^ txt)] -> [%e mk_poly rest k]]
+    | (None, _) :: rest -> mk_poly rest k
+    | [] -> k
+  in
   let read =
     [%expr let rec read () = [%e matcher] in read (); [%e constructor]] |>
     mk_cells fields |>
     mk_tuple_readers fields
   in
   Vb.mk (pvar (ptype.ptype_name.txt ^ "_from_protobuf"))
-        [%expr fun decoder -> [%e read]]
+        (mk_poly ptype.ptype_params [%expr fun decoder -> [%e read]])
 
 let derive_reader_bare fields ptype =
   match ptype with
