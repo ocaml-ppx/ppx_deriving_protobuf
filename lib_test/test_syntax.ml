@@ -156,12 +156,22 @@ let test_variant ctxt =
   assert_equal (V1D ("foo", "bar")) (v1_from_protobuf d)
 
 let test_errors ctxt =
+  (* scalars *)
   let d = Protobuf.Decoder.of_string "" in
   assert_raises Protobuf.Decoder.(Failure (Missing_field "s"))
                 (fun () -> s_from_protobuf d);
   let d = Protobuf.Decoder.of_string "\x0d\x00\x00\xC0\x3f" in
   assert_raises Protobuf.Decoder.(Failure (Unexpected_payload ("s", Protobuf.Bits32)))
                 (fun () -> s_from_protobuf d);
+  (* records *)
+  let d = Protobuf.Decoder.of_string "" in
+  assert_raises Protobuf.Decoder.(Failure (Missing_field "r1.r1b"))
+                (fun () -> r1_from_protobuf d);
+  (* tuples *)
+  let d = Protobuf.Decoder.of_string "\x0a\x00" in
+  assert_raises Protobuf.Decoder.(Failure (Missing_field "r3.r3a/1"))
+                (fun () -> r3_from_protobuf d);
+  (* variants *)
   let d = Protobuf.Decoder.of_string "\x08\x03\x18\x1a" in
   assert_raises Protobuf.Decoder.(Failure (Malformed_variant "v1"))
                 (fun () -> v1_from_protobuf d)

@@ -31,6 +31,7 @@ and pb_kind =
 | Pbk_repeated
 and pb_field = {
   pbf_name  : string;
+  pbf_path  : string;
   pbf_key   : int;
   pbf_enc   : pb_encoding;
   pbf_type  : pb_type;
@@ -161,17 +162,17 @@ let pb_encoding_of_attrs attrs =
     end
   | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Encoding)))
 
-let fields_of_ptype ptype =
-  let rec field_of_ptyp pbf_name pbf_key pbf_kind ptyp =
+let fields_of_ptype base_path ptype =
+  let rec field_of_ptyp pbf_name pbf_path pbf_key pbf_kind ptyp =
     match ptyp with
     | [%type: [%t? arg] option ] ->
       begin match pbf_kind with
-      | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_optional arg
+      | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_optional arg
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
     | [%type: [%t? arg] array ] | [%type: [%t? arg] list ] ->
       begin match pbf_kind with
-      | Pbk_required -> field_of_ptyp pbf_name pbf_key Pbk_repeated arg
+      | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated arg
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
     | { ptyp_desc = Ptyp_tuple _; ptyp_attributes = attrs; ptyp_loc; } ->
@@ -182,7 +183,7 @@ let fields_of_ptype ptype =
           | Some k -> k
           | None -> raise (Error (Pberr_no_key ptyp_loc))
       in
-      { pbf_name; pbf_key; pbf_kind;
+      { pbf_name; pbf_key; pbf_kind; pbf_path;
         pbf_enc  = Pbe_bytes;
         pbf_type = Pbt_tuple ptyp;
         pbf_loc  = ptyp_loc; }
@@ -224,27 +225,29 @@ let fields_of_ptype ptype =
         (Pbe_varint | Pbe_zigzag | Pbe_bits32 | Pbe_bits64)
       | Pbt_float, (Pbe_bits32 | Pbe_bits64)
       | (Pbt_string | Pbt_nested _), Pbe_bytes ->
-        { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind;
+        { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind; pbf_path;
           pbf_loc = ptyp_loc; }
       | _ ->
         raise (Error (Pberr_no_conversion (ptyp_loc, pbf_type, pbf_enc)))
       end
     | { ptyp_desc = Ptyp_alias (ptyp', _) } ->
-      field_of_ptyp pbf_name pbf_key pbf_kind ptyp'
+      field_of_ptyp pbf_name pbf_path pbf_key pbf_kind ptyp'
     | ptyp -> raise (Error (Pberr_wrong_ty ptyp))
   in
   let fields =
     match ptype with
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
       ptyps |> List.mapi (fun i ptyp ->
-        field_of_ptyp (Printf.sprintf "elem_%d" i) (Some (i + 1)) Pbk_required ptyp)
+        field_of_ptyp (Printf.sprintf "elem_%d" i) (Printf.sprintf "%s/%d" base_path i)
+                      (Some (i + 1)) Pbk_required ptyp)
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
-      [field_of_ptyp "alias" (Some 1) Pbk_required ptyp]
+      [field_of_ptyp "alias" base_path (Some 1) Pbk_required ptyp]
     | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
       raise (Error (Pberr_abstract ptype))
     | { ptype_kind = Ptype_record fields } ->
-      fields |> List.mapi (fun i { pld_name; pld_type; } ->
-        field_of_ptyp ("field_" ^ pld_name.txt) None Pbk_required pld_type)
+      fields |> List.mapi (fun i { pld_name = { txt = name }; pld_type; } ->
+        field_of_ptyp ("field_" ^ name) (Printf.sprintf "%s.%s" base_path name)
+                      None Pbk_required pld_type)
     | { ptype_kind = Ptype_variant constrs; ptype_loc } ->
       let constrs' =
         constrs |> List.map (fun ({ pcd_attributes; pcd_loc; } as pcd) ->
@@ -263,7 +266,8 @@ let fields_of_ptype ptype =
         pbf_type = Pbt_variant (constrs' |>
               List.map (fun (key, { pcd_name = { txt = name } }) -> key, name));
         pbf_kind = Pbk_required;
-        pbf_loc  = ptype_loc; } ::
+        pbf_loc  = ptype_loc;
+        pbf_path = base_path; } ::
       (constrs |> ExtList.List.filter_map (fun ({ pcd_name; pcd_args; pcd_attributes; pcd_loc; }) ->
         let ptyp =
           match pcd_args with
@@ -273,7 +277,9 @@ let fields_of_ptype ptype =
         in
         ptyp |> Option.map (fun ptyp ->
           let key = (pb_key_of_attrs pcd_attributes) + 1 in
-          field_of_ptyp (Printf.sprintf "constr_%s" pcd_name.txt) (Some key) Pbk_required ptyp)))
+          field_of_ptyp (Printf.sprintf "constr_%s" pcd_name.txt)
+                        (Printf.sprintf "%s.%s" base_path pcd_name.txt)
+                        (Some key) Pbk_required ptyp)))
   in
   fields |> List.iter (fun field ->
     fields |> List.iter (fun field' ->
@@ -281,12 +287,13 @@ let fields_of_ptype ptype =
         raise (Error (Pberr_key_duplicate (field.pbf_key, field'.pbf_loc, field.pbf_loc)))));
   fields
 
-let rec derive_reader ({ ptype_name } as ptype) =
+let rec derive_reader base_path ptype =
   let rec mk_tuple_readers fields k =
     match fields with
-    | { pbf_type = Pbt_tuple ty; pbf_name; } :: rest ->
+    | { pbf_type = Pbt_tuple ty; pbf_name; pbf_path; } :: rest ->
       (* Manufacture a structure just for this tuple *)
-      Exp.let_ Nonrecursive [derive_reader (Type.mk ~manifest:ty (mkloc pbf_name !default_loc))]
+      Exp.let_ Nonrecursive
+               [derive_reader pbf_path (Type.mk ~manifest:ty (mkloc pbf_name !default_loc))]
                (mk_tuple_readers rest k)
     | _ :: rest -> mk_tuple_readers rest k
     | [] -> k
@@ -352,7 +359,7 @@ let rec derive_reader ({ ptype_name } as ptype) =
   in
   let rec mk_field_cases fields =
     match fields with
-    | { pbf_key; pbf_name; pbf_enc; pbf_type; pbf_kind } as field :: rest ->
+    | { pbf_key; pbf_name; pbf_enc; pbf_type; pbf_kind; pbf_path } as field :: rest ->
       let updated =
         match pbf_kind with
         | Pbk_required | Pbk_optional ->
@@ -365,11 +372,11 @@ let rec derive_reader ({ ptype_name } as ptype) =
                 [%expr [%e evar pbf_name] := [%e updated]; read ()]) ::
       (Exp.case [%pat? Some ([%p pint pbf_key], kind)]
                 [%expr raise Protobuf.Decoder.(Failure
-                              (Unexpected_payload ([%e str ptype_name.txt], kind)))]) ::
+                              (Unexpected_payload ([%e str pbf_path], kind)))]) ::
       mk_field_cases rest
     | [] -> []
   in
-  let fields = fields_of_ptype ptype in
+  let fields = fields_of_ptype base_path ptype in
   let matcher =
     Exp.match_ [%expr Protobuf.Decoder.key reader]
                ((mk_field_cases fields) @
@@ -378,6 +385,7 @@ let rec derive_reader ({ ptype_name } as ptype) =
                  Exp.case [%pat? None] [%expr ()]])
   in
   let construct_ptyp pbf_name ptyp =
+    let { pbf_path } = fields |> List.find (fun { pbf_name = pbf_name' } -> pbf_name' = pbf_name) in
     match ptyp with
     | [%type: [%t? _] option] ->
       [%expr ![%e evar pbf_name]]
@@ -388,12 +396,12 @@ let rec derive_reader ({ ptype_name } as ptype) =
     | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _); } ->
       [%expr
         match ![%e evar pbf_name] with
-        | None   -> raise Protobuf.Decoder.(Failure (Missing_field ([%e str ptype_name.txt])))
+        | None   -> raise Protobuf.Decoder.(Failure (Missing_field ([%e str pbf_path])))
         | Some v -> v
       ]
     | _ -> assert false
   in
-  let construct_ptype ptype =
+  let constructor =
     match ptype with
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
       Exp.tuple (List.mapi (fun i ptyp ->
@@ -443,20 +451,21 @@ let rec derive_reader ({ ptype_name } as ptype) =
                  (mk_variant_cases constrs)
   in
   let reader =
-    [%expr
-      let rec read () = [%e matcher] in
-      read (); [%e construct_ptype ptype]
-    ] |>
-    mk_tuple_readers fields |>
-    mk_cells fields
+    [%expr let rec read () = [%e matcher] in read (); [%e constructor]] |>
+    mk_cells fields |>
+    mk_tuple_readers fields
   in
-  Vb.mk (pvar (ptype_name.txt ^ "_from_protobuf"))
+  Vb.mk (pvar (ptype.ptype_name.txt ^ "_from_protobuf"))
         [%expr fun reader -> [%e reader]]
 
 let derive item =
   match item with
   | { pstr_desc = Pstr_type ty_decls } as item ->
-    [item; Str.value Recursive (List.map derive_reader ty_decls)]
+    let reader =
+      ty_decls |> List.map (fun ({ ptype_name } as ptype) ->
+        derive_reader ptype_name.txt ptype)
+    in
+    [item; Str.value Recursive reader]
   | _ -> assert false
 
 let protobuf_mapper argv =
