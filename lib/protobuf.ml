@@ -4,26 +4,6 @@ type payload_kind =
 | Bits64
 | Bytes
 
-let int_of_int32 exn v =
-  if Sys.word_size = 32 && (Int32.shift_right v 31) <> Int32.zero then
-    raise exn;
-  Int32.to_int v
-
-let int_of_int64 exn v =
-  if (Int64.shift_right v 63) <> Int64.zero then
-    raise exn;
-  Int64.to_int v
-
-let int32_of_int64 exn v =
-  if (Int64.shift_right v 32) <> Int64.zero then
-    raise exn;
-  Int64.to_int32 v
-
-let bool_of_int64 exn v =
-  if v = Int64.zero then false
-  else if v = Int64.one then true
-  else raise exn
-
 module Decoder = struct
   type error =
   | Incomplete
@@ -60,6 +40,26 @@ module Decoder = struct
       match exn with
       | Failure e -> Some (Printf.sprintf "Protobuf.Decoder.Failure(%s)" (error_to_string e))
       | _         -> None)
+
+  let int_of_int32 fld v =
+    if Sys.word_size = 32 && (Int32.shift_right v 31) <> Int32.zero then
+      raise (Failure (Overflow fld));
+    Int32.to_int v
+
+  let int_of_int64 fld v =
+    if (Int64.shift_right v 63) <> Int64.zero then
+      raise (Failure (Overflow fld));
+    Int64.to_int v
+
+  let int32_of_int64 fld v =
+    if (Int64.shift_right v 32) <> Int64.zero then
+      raise (Failure (Overflow fld));
+    Int64.to_int32 v
+
+  let bool_of_int64 fld v =
+    if v = Int64.zero then false
+    else if v = Int64.one then true
+    else raise (Failure (Overflow fld))
 
   type t = {
             source : string;
@@ -244,4 +244,14 @@ module Encoder = struct
       | Bits32 -> 5
     in
     smallint (pk' lor (k lsl 3)) e
+
+  let int32_of_int64 fld v =
+    if (Int64.shift_right v 32) <> Int64.zero then
+      raise (Failure (Overflow fld));
+    Int64.to_int32 v
+
+  let int32_of_int fld v =
+    if Sys.word_size = 64 && (v lsr 32) <> 0 then
+      raise (Failure (Overflow fld));
+    Int32.of_int v
 end

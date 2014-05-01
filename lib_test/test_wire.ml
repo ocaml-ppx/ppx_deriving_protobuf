@@ -81,15 +81,20 @@ let test_encoder ctxt =
 let test_overflow ctxt =
   if Sys.word_size = 32 then
     assert_raises Decoder.(Failure (Overflow ""))
-                  (fun () -> int_of_int32 Decoder.(Failure (Overflow "")) 0xffffffffl)
+                  (fun () -> Decoder.int_of_int32 "" 0xffffffffl)
   else
-    assert_equal (-1) (int_of_int32 Decoder.(Failure (Overflow "")) 0xffffffffl);
+    assert_equal (-1) (Decoder.int_of_int32 "" 0xffffffffl);
   assert_raises Decoder.(Failure (Overflow ""))
-                (fun () -> int_of_int64 Decoder.(Failure (Overflow "")) 0xffffffffffffffffL);
+                (fun () -> Decoder.int_of_int64 "" 0xffffffffffffffffL);
   assert_raises Decoder.(Failure (Overflow ""))
-                (fun () -> int32_of_int64 Decoder.(Failure (Overflow "")) 0x1ffffffffL);
+                (fun () -> Decoder.int32_of_int64 "" 0x1ffffffffL);
   assert_raises Decoder.(Failure (Overflow ""))
-                (fun () -> bool_of_int64 Decoder.(Failure (Overflow "")) 2L);
+                (fun () -> Decoder.bool_of_int64 "" 2L);
+  if Sys.word_size = 64 then
+    assert_raises Encoder.(Failure (Overflow ""))
+                  (fun () -> Encoder.int32_of_int "" (2 lsl 33));
+  assert_raises Encoder.(Failure (Overflow ""))
+                (fun () -> Encoder.int32_of_int64 "" 0x1ffffffffL);
   ()
 
 let suite = "Test wire format" >::: [

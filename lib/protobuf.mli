@@ -5,22 +5,6 @@ type payload_kind =
 | Bits64
 | Bytes
 
-(** [int_of_int32 exn v] returns [v] truncated to [int].
-    If the value doesn't fit in the range of [int], raises [exn]. *)
-val int_of_int32    : exn -> int32 -> int
-
-(** [int_of_int64 exn v] returns [v] truncated to [int].
-    If the value doesn't fit in the range of [int], raises [exn]. *)
-val int_of_int64    : exn -> int64 -> int
-
-(** [int32_of_int64 exn v] returns [v] truncated to [int32].
-    If the value doesn't fit in the range of [int32], raises [exn]. *)
-val int32_of_int64  : exn -> int64 -> int32
-
-(** [bool_of_int64 exn v] returns [v] truncated to [bool].
-    If the value doesn't fit in the range of [bool], raises [exn]. *)
-val bool_of_int64   : exn -> int64 -> bool
-
 module Decoder : sig
   (** Type of failures possible while decoding. *)
   type error =
@@ -79,6 +63,26 @@ module Decoder : sig
       [Failure Incomplete].
       If the payload kind is unknown, raises [Failure Malformed_field]. *)
   val key       : t -> (int * payload_kind) option
+
+  (** [int_of_int32 fld v] returns [v] truncated to [int].
+      If the value doesn't fit in the range of [int], raises
+      [Failure (Overflow fld)]. *)
+  val int_of_int32    : string -> int32 -> int
+
+  (** [int_of_int64 fld v] returns [v] truncated to [int].
+      If the value doesn't fit in the range of [int], raises
+      [Failure (Overflow fld)]. *)
+  val int_of_int64    : string -> int64 -> int
+
+  (** [int32_of_int64 fld v] returns [v] truncated to [int32].
+      If the value doesn't fit in the range of [int32], raises
+      [Failure (Overflow fld)]. *)
+  val int32_of_int64  : string -> int64 -> int32
+
+  (** [bool_of_int64 fld v] returns [v] truncated to [bool].
+      If the value doesn't fit in the range of [bool], raises
+      [Failure (Overflow fld)]. *)
+  val bool_of_int64   : string -> int64 -> bool
 end
 
 module Encoder : sig
@@ -121,4 +125,14 @@ module Encoder : sig
 
   (** [key (k, pk) e] writes a key and a payload kind to [e]. *)
   val key       : (int * payload_kind) -> t -> unit
+
+  (** [int32_of_int fld v] returns [v] truncated to [int32].
+      If the value doesn't fit in the range of [int32], raises
+      [Failure (Overflow fld)]. *)
+  val int32_of_int    : string -> int -> int32
+
+  (** [int32_of_int64 fld v] returns [v] truncated to [int32].
+      If the value doesn't fit in the range of [int32], raises
+      [Failure (Overflow fld)]. *)
+  val int32_of_int64  : string -> int64 -> int32
 end

@@ -449,7 +449,67 @@ The encoder errors use the same "path" convention as decoder errors.
 Extending protocols
 -------------------
 
-TODO: describe
+In real-world applications, implementations using multiple versions of the same
+protocol must coexist. Protocol Buffers offer an imperfect and sometimes
+complicated, but very powerful and practical solution to this problem.
+
+The wire protocol is designed in a way that allows to safely extend it if
+one follows a set of constraints.
+
+### Never
+
+Violating any of the following constraints always results in exceptions or
+receiving garbage data:
+
+  * Never change `[@key]` or `[@encoding]` annotations; never add or remove
+    `[@bare]` annotation.
+  * Never change primitive (i.e. excluding `list`, `option` or `array` qualifiers)
+    types of existing fields, tuple elements or constructor arguments.
+  * Never remove required fields, tuple elements or constructor arguments.
+  * Never replace a primitive type of a field, tuple element or constructor argument
+    with a tuple, even if the first element of the replacing tuple is
+    the former primitive type.
+  * Never add arguments to an argument-less variant constructor, or vice versa.
+
+### Always
+
+Any of the following changes may be applied to either the sender or receiver
+of the message without breaking protocol:
+
+  * Adding an optional field to a record, or an optional element to a tuple,
+    or an optional argument to a constructor **with multiple arguments**.
+  * Converting an optional field, tuple element or constructor argument
+    into a repeated one.
+  * Converting a repeated field, tuple element or constructor argument
+    into an optional one (this is not recommended, as it silently ignores
+    some of input data).
+  * Turning an alias into a record that has a field marked `[@key 1]`.
+  * Turning an alias into a tuple where the first element is the former
+    type of the alias (this is not recommended for reasons of code clarity).
+
+### On sender
+
+Any of the following changes may be applied exclusively to the sender
+without breaking the existing receivers:
+
+  * Adding a required field, tuple element, or argument to a constructor
+    **with multiple arguments**.
+  * Converting an optional or repeated field, tuple element or constructor
+    argument into a required one.
+  * Replacing an integer type with a narrower one while preserving
+    the encoding (it's a good idea to add the `[@encoding]` annotation
+    explicitly).
+  * Adding a variant constructor, but never actually sending it.
+
+### On receiver
+
+Any of the following changes may be applied exclusively to the receiver
+without losing the ability to decode messages from existing senders:
+
+  * Removing a required field, tuple element, or argument to a constructor
+    **with more than two arguments**.
+  * Replacing an integer type with a wider one while preserving the encoding
+    (it's a good idea to add the `[@encoding]` annotation explicitly).
 
 Compatibility
 -------------
@@ -460,6 +520,11 @@ messages should be merged. However, there is no concept of "merging messages"
 accessible to _ppx_protobuf_, and this feature can be considered harmful anyway:
 it is far too forgiving of invalid input. Thus, _ppx_protobuf_ doesn't implement
 this merging.
+
+_ppx_protobuf_ is more strict than protoc with numeric types; it raises
+`Failure (Overflow fld)` rather than silently truncate values. It is thought
+that accidentally losing 32th or 64th bit with OCaml's `int` type would be
+a common error without this countermeasure.
 
 Everything else should be entirely compatible with _protoc_.
 
