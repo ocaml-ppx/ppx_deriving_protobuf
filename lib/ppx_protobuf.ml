@@ -7,7 +7,6 @@ open Ast_helper
 open Ast_convenience
 
 type pb_encoding =
-| Pbe_bool
 | Pbe_varint
 | Pbe_zigzag
 | Pbe_bits32
@@ -69,7 +68,6 @@ let string_of_lident lid =
 
 let string_of_pb_encoding enc =
   match enc with
-  | Pbe_bool   -> "bool"
   | Pbe_varint -> "varint"
   | Pbe_zigzag -> "zigzag"
   | Pbe_bits32 -> "bits32"
@@ -78,7 +76,6 @@ let string_of_pb_encoding enc =
 
 let pb_encoding_of_string str =
   match str with
-  | "bool"   -> Pbe_bool
   | "varint" -> Pbe_varint
   | "zigzag" -> Pbe_zigzag
   | "bits32" -> Pbe_bits32
@@ -110,7 +107,7 @@ let rec string_of_pb_type kind =
 let string_payload_kind_of_pb_encoding enc =
   "Protobuf." ^
   match enc with
-  | Pbe_bool | Pbe_varint | Pbe_zigzag -> "Varint"
+  | Pbe_varint | Pbe_zigzag -> "Varint"
   | Pbe_bits32 -> "Bits32"
   | Pbe_bits64 -> "Bits64"
   | Pbe_bytes  -> "Bytes"
@@ -153,6 +150,10 @@ let mangle_lid ?(suffix="") lid =
   | Lident s    -> Lident (s ^ suffix)
   | Ldot (p, s) -> Ldot (p, s ^ suffix)
   | Lapply _    -> assert false
+
+let module_name loc =
+  let (file, _, _) = get_pos_info loc.loc_start in
+  String.capitalize (Filename.(basename (chop_suffix file ".ml")))
 
 let pb_key_of_attrs attrs =
   match List.find (fun ({ txt }, _) -> txt = "key") attrs with
@@ -233,9 +234,8 @@ let fields_of_ptype base_path ptype =
         try  pb_encoding_of_attrs attrs
         with Not_found ->
           match pbf_type with
-          | Pbt_bool   -> Pbe_bool
-          | Pbt_int    -> Pbe_varint
           | Pbt_float  -> Pbe_bits64
+          | Pbt_bool   | Pbt_int     -> Pbe_varint
           | Pbt_int32  | Pbt_uint32  -> Pbe_bits32
           | Pbt_int64  | Pbt_uint64  -> Pbe_bits64
           | Pbt_string | Pbt_tuple _ | Pbt_poly _ -> Pbe_bytes
@@ -247,7 +247,7 @@ let fields_of_ptype base_path ptype =
           | Pbt_variant _ -> assert false
       in
       begin match pbf_type, pbf_enc with
-      | Pbt_bool, Pbe_bool
+      | Pbt_bool, Pbe_varint
       | (Pbt_int | Pbt_int32 | Pbt_int64 | Pbt_uint32 | Pbt_uint64),
         (Pbe_varint | Pbe_zigzag | Pbe_bits32 | Pbe_bits64)
       | Pbt_float, (Pbe_bits32 | Pbe_bits64)
@@ -334,23 +334,27 @@ let rec derive_reader fields ptype =
       [%expr let [%p pvar field.pbf_name] = ref [] in [%e mk_cells rest k]]
     | [] -> k
   in
-  let mk_reader { pbf_name; pbf_enc; pbf_type; } =
+  let mk_reader { pbf_name; pbf_path; pbf_enc; pbf_type; } =
     let value =
       let ident = Exp.ident (lid ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))) in
       [%expr [%e ident] decoder]
     in
+    let overflow =
+      [%expr Protobuf.Decoder.Failure (Protobuf.Decoder.Overflow ([%e str pbf_path]))]
+    in
     match pbf_type, pbf_enc with
     (* bool *)
-    | Pbt_bool, Pbe_bool -> value
+    | Pbt_bool, Pbe_varint ->
+      [%expr Protobuf.bool_of_int64 [%e overflow] [%e value]]
     (* int *)
     | Pbt_int, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      [%expr Protobuf.Decoder.int_of_int64 [%e value]]
+      [%expr Protobuf.int_of_int64 [%e overflow] [%e value]]
     | Pbt_int, Pbe_bits32 ->
-      [%expr Protobuf.Decoder.int_of_int32 [%e value]]
+      [%expr Protobuf.int_of_int32 [%e overflow] [%e value]]
     (* int32 *)
     | Pbt_int32, Pbe_bits32 -> value
     | Pbt_int32, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      [%expr Protobuf.Decoder.int32_of_int64 [%e value]]
+      [%expr Protobuf.int32_of_int64 [%e overflow] [%e value]]
     (* int64 *)
     | Pbt_int64, (Pbe_varint | Pbe_zigzag | Pbe_bits64) -> value
     | Pbt_int64, Pbe_bits32 ->
@@ -359,7 +363,7 @@ let rec derive_reader fields ptype =
     | Pbt_uint32, Pbe_bits32 ->
       [%expr Uint32.of_int32 [%e value]]
     | Pbt_uint32, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
-      [%expr Uint32.of_int32 (Protobuf.Decoder.int32_of_int64 [%e value])]
+      [%expr Uint32.of_int32 (Protobuf.int32_of_int64 [%e overflow] [%e value])]
     (* uint64 *)
     | Pbt_uint64, (Pbe_varint | Pbe_zigzag | Pbe_bits64) ->
       [%expr Uint64.of_int64 [%e value]]
@@ -450,7 +454,7 @@ let rec derive_reader fields ptype =
     | { ptype_kind = Ptype_record fields; } ->
       Exp.record (List.mapi (fun i { pld_name; pld_type; } ->
         lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
-    | { ptype_kind = Ptype_variant constrs; ptype_name } ->
+    | { ptype_kind = Ptype_variant constrs; ptype_name; ptype_loc } ->
       let with_arg =
         constrs |> ExtList.List.filter_map (fun pcd ->
           match pcd with
@@ -481,8 +485,9 @@ let rec derive_reader fields ptype =
                      [%expr let [%p ptuple pargs'] = arg in [%e constr name eargs']]
           end :: mk_variant_cases rest
         | [] ->
+          let name = (module_name ptype_loc) ^ "." ^ ptype_name.txt in
           [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
-                                (Failure (Malformed_variant ([%e str ptype_name.txt])))]]
+                                (Failure (Malformed_variant ([%e str name])))]]
       in
       Exp.match_ (tuple ([%expr !variant] ::
                          List.map (fun name -> [%expr ![%e evar ("constr_" ^ name)]]) with_arg))
@@ -505,7 +510,7 @@ let rec derive_reader fields ptype =
 
 let derive_reader_bare fields ptype =
   match ptype with
-  | { ptype_kind = Ptype_variant constrs; ptype_name } ->
+  | { ptype_kind = Ptype_variant constrs; ptype_name; ptype_loc } ->
     if List.for_all (fun { pcd_args } -> pcd_args = []) constrs then
       let rec mk_variant_cases constrs =
         match constrs with
@@ -514,8 +519,9 @@ let derive_reader_bare fields ptype =
                       (Int64.of_int (pb_key_of_attrs pcd_attributes))))
                     (constr name [])) :: mk_variant_cases rest
         | [] ->
+          let name = (module_name ptype_loc) ^ "." ^ ptype_name.txt in
           [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
-                                (Failure (Malformed_variant ([%e str ptype_name.txt])))]]
+                                (Failure (Malformed_variant ([%e str name])))]]
       in
       let matcher =
         Exp.match_ [%expr Protobuf.Decoder.varint decoder]
@@ -530,8 +536,8 @@ let derive item =
   | { pstr_desc = Pstr_type ty_decls } as item ->
     let derived =
       ty_decls |>
-      List.map (fun ({ ptype_name = { txt = name } } as ptype) ->
-        let fields  = fields_of_ptype name ptype in
+      List.map (fun ({ ptype_name = { txt = name }; ptype_loc } as ptype) ->
+        let fields = fields_of_ptype ((module_name ptype_loc) ^ "." ^ name) ptype in
         [derive_reader fields ptype] @
         (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype))) |>
       List.concat
