@@ -36,6 +36,11 @@ let test_decoder ctxt =
   assert_equal ~printer:Int64.to_string 1L (Decoder.zigzag d);
   let d = Decoder.of_string "\x03" in
   assert_equal ~printer:Int64.to_string (-2L) (Decoder.zigzag d);
+  let d = Decoder.of_string "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01" in
+  assert_equal ~printer:Int64.to_string 0xffffffffffffffffL (Decoder.varint d);
+  let d = Decoder.of_string "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02" in
+  assert_raises (Decoder.Failure Decoder.Overlong_varint)
+                (fun () -> Decoder.varint d);
   ()
 
 let test_encoder ctxt =
@@ -76,6 +81,9 @@ let test_encoder ctxt =
   let e = Encoder.create () in
   Encoder.zigzag (-2L) e;
   assert_equal ~printer "\x03" (Encoder.to_string e);
+  let e = Encoder.create () in
+  Encoder.varint 0xffffffffffffffffL e;
+  assert_equal ~printer "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01" (Encoder.to_string e);
   ()
 
 let test_overflow ctxt =

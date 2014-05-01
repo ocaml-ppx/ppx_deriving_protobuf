@@ -411,6 +411,7 @@ It discerns these types of failure (represented with `Decoder.Failure` exception
 
   * `Incomplete`: the message was truncated or using invalid wire format. Frame
     overruns are likely to produce this as well.
+  * `Overlong_varint`: a `varint` greater than 2⁶⁴-1 was encountered.
   * `Malformed_field`: an invalid wire type was encountered.
   * `Overflow fld`: an integer field in the message contained a value outside
     the range of the corresponding type, e.g. a `varint` field corresponding

@@ -9,6 +9,7 @@ module Decoder : sig
   (** Type of failures possible while decoding. *)
   type error =
   | Incomplete
+  | Overlong_varint
   | Malformed_field
   | Overflow            of string
   | Unexpected_payload  of string * payload_kind

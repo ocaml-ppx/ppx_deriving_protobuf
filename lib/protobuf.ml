@@ -7,6 +7,7 @@ type payload_kind =
 module Decoder = struct
   type error =
   | Incomplete
+  | Overlong_varint
   | Malformed_field
   | Overflow            of string
   | Unexpected_payload  of string * payload_kind
@@ -16,6 +17,7 @@ module Decoder = struct
   let error_to_string e =
     match e with
     | Incomplete -> "Incomplete"
+    | Overlong_varint -> "Overlong_varint"
     | Malformed_field -> "Malformed_field"
     | Overflow fld ->
       Printf.sprintf "Overflow(%S)" fld
@@ -80,9 +82,12 @@ module Decoder = struct
   let varint d =
     let rec read s =
       let b = byte d in
-      if b land 0x80 <> 0
-      then Int64.(logor (shift_left (logand (of_int b) 0x7fL) s) (read (s + 7)))
-      else Int64.(shift_left (of_int b) s)
+      if b land 0x80 <> 0 then
+        Int64.(logor (shift_left (logand (of_int b) 0x7fL) s) (read (s + 7)))
+      else if s < 56 || (b land 0x7f) <= 1 then
+        Int64.(shift_left (of_int b) s)
+      else
+        raise (Failure Overlong_varint)
     in
     read 0
 
@@ -194,11 +199,11 @@ module Encoder = struct
 
   let varint i e =
     let rec write i =
-      if i < 0x80L then
-        Buffer.add_char e (char_of_int (Int64.to_int i))
+      if Int64.(logand i (lognot 0x7fL)) = Int64.zero then
+        Buffer.add_char e (char_of_int Int64.(to_int (logand 0x7fL i)))
       else begin
         Buffer.add_char e (char_of_int Int64.(to_int (logor 0x80L (logand 0x7fL i))));
-        write (Int64.shift_right i 7)
+        write (Int64.shift_right_logical i 7)
       end
     in
     write i
