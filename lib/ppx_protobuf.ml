@@ -340,7 +340,7 @@ let rec derive_reader fields ptype =
       [%expr [%e ident] decoder]
     in
     let overflow =
-      [%expr Protobuf.Decoder.Failure (Protobuf.Decoder.Overflow ([%e str pbf_path]))]
+      [%expr Protobuf.Decoder.Failure (Protobuf.Decoder.Overflow [%e str pbf_path])]
     in
     match pbf_type, pbf_enc with
     (* bool *)
@@ -405,7 +405,7 @@ let rec derive_reader fields ptype =
       let updated =
         match pbf_kind with
         | Pbk_required | Pbk_optional ->
-          [%expr Some ([%e mk_reader field])]
+          [%expr Some [%e mk_reader field]]
         | Pbk_repeated ->
           [%expr [%e mk_reader field] :: ![%e evar pbf_name]]
       in
@@ -437,7 +437,7 @@ let rec derive_reader fields ptype =
     | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _ | Ptyp_var _); } ->
       [%expr
         match ![%e evar pbf_name] with
-        | None   -> raise Protobuf.Decoder.(Failure (Missing_field ([%e str pbf_path])))
+        | None   -> raise Protobuf.Decoder.(Failure (Missing_field [%e str pbf_path]))
         | Some v -> v
       ]
     | _ -> assert false
@@ -474,7 +474,7 @@ let rec derive_reader fields ptype =
                      (constr name [])
           | [arg] ->
             Exp.case (ptuple (pkey :: pargs))
-                     (Exp.construct (lid name) (Some ([%expr arg])))
+                     (Exp.construct (lid name) (Some [%expr arg]))
           | args' -> (* Annoying constructor corner case *)
             let pargs', eargs' =
               List.mapi (fun i _ ->
@@ -487,7 +487,7 @@ let rec derive_reader fields ptype =
         | [] ->
           let name = (module_name ptype_loc) ^ "." ^ ptype_name.txt in
           [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
-                                (Failure (Malformed_variant ([%e str name])))]]
+                                (Failure (Malformed_variant [%e str name]))]]
       in
       Exp.match_ (tuple ([%expr !variant] ::
                          List.map (fun name -> [%expr ![%e evar ("constr_" ^ name)]]) with_arg))
@@ -521,7 +521,7 @@ let derive_reader_bare fields ptype =
         | [] ->
           let name = (module_name ptype_loc) ^ "." ^ ptype_name.txt in
           [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
-                                (Failure (Malformed_variant ([%e str name])))]]
+                                (Failure (Malformed_variant [%e str name]))]]
       in
       let matcher =
         Exp.match_ [%expr Protobuf.Decoder.varint decoder]
