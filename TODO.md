@@ -1,2 +1,1 @@
  * defaults
- * Polymorphic variants

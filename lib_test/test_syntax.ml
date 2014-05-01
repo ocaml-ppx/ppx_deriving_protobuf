@@ -216,6 +216,32 @@ let test_mylist ctxt =
                     "\x0a\x02\x08\x03\x12\x02\x08\x01")
                    (Cons (1, (Cons (2, (Cons (3, Nil))))))
 
+type v3 = [ `V3A [@key 1] | `V3B [@key 2] of int | `V3C [@key 3] of string * string ]
+[@@protobuf]
+let test_poly_variant ctxt =
+  let printer v =
+    match v with
+    | `V3A -> "`V3A"
+    | `V3B i -> Printf.sprintf "`V3B(%d)" i
+    | `V3C (s1,s2) -> Printf.sprintf "`V3C(%S, %S)" s1 s2
+  in
+  assert_roundtrip printer v3_to_protobuf v3_from_protobuf
+                   "\x08\x01" `V3A;
+  assert_roundtrip printer v3_to_protobuf v3_from_protobuf
+                   "\x08\x02\x18\x2a" (`V3B 42);
+  assert_roundtrip printer v3_to_protobuf v3_from_protobuf
+                   "\x08\x03\x22\x0a\x0a\x03abc\x12\x03def" (`V3C ("abc", "def"))
+
+type r6 = {
+  r6a : [ `A [@key 1] | `B [@key 2] ] [@key 1];
+} [@@protobuf]
+let test_imm_pvariant ctxt =
+  let printer { r6a } =
+    match r6a with `A -> "{ r6a = `A }" | `B -> "{ r6a = `B }"
+  in
+  assert_roundtrip printer r6_to_protobuf r6_from_protobuf
+                   "\x0a\x02\x08\x02" { r6a = `B }
+
 let test_errors ctxt =
   (* scalars *)
   let d = Protobuf.Decoder.of_string "" in
@@ -259,6 +285,8 @@ let suite = "Test syntax" >::: [
     "test_variant_bare" >:: test_variant_bare;
     "test_tvar"         >:: test_tvar;
     "test_mylist"       >:: test_mylist;
+    "test_poly_variant" >:: test_poly_variant;
+    "test_imm_pvariant" >:: test_imm_pvariant;
     "test_errors"       >:: test_errors;
     "test_skip"         >:: test_skip;
   ]
