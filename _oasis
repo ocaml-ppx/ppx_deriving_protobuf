@@ -3,6 +3,7 @@ Name:         ppx_protobuf
 Version:      0.9.0
 Synopsis:     A Protobuf codec generator for OCaml >=4.02 based on extension points
 Authors:      Peter Zotov <whitequark@whitequark.org>
+Homepage:     https://github.com/whitequark/ocaml-ppx_protobuf
 License:      MIT
 Plugins:      META (0.4), DevFiles (0.4)
 BuildTools:   ocamlbuild
