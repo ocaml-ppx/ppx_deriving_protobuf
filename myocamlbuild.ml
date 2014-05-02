@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 951420f82bc4e1e5213a822fbd3158c5) *)
+(* DO NOT EDIT (digest: e0ced828eed07b8bdc74e3277a812614) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -39,10 +39,10 @@ module OASISExpr = struct
   open OASISGettext
 
 
-  type test = string
+  type test = string 
 
 
-  type flag = string
+  type flag = string 
 
 
   type t =
@@ -52,10 +52,10 @@ module OASISExpr = struct
     | EOr of t * t
     | EFlag of flag
     | ETest of test * string
+    
 
 
-
-  type 'a choices = (t * 'a) list
+  type 'a choices = (t * 'a) list 
 
 
   let eval var_get t =
@@ -430,10 +430,10 @@ module MyOCamlbuildBase = struct
   module OC = Ocamlbuild_pack.Ocaml_compiler
 
 
-  type dir = string
-  type file = string
-  type name = string
-  type tag = string
+  type dir = string 
+  type file = string 
+  type name = string 
+  type tag = string 
 
 
 (* # 62 "src/plugins/ocamlbuild/MyOCamlbuildBase.ml" *)
@@ -448,7 +448,7 @@ module MyOCamlbuildBase = struct
          * directory.
          *)
         includes:  (dir * dir list) list;
-      }
+      } 
 
 
   let env_filename =
@@ -604,7 +604,23 @@ let package_default =
                (OASISExpr.EBool true,
                  S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
             ]);
+          (["oasis_executable_ppx_protobuf_native"; "ocaml"; "link"; "native"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
+            ]);
           (["oasis_executable_ppx_protobuf_byte"; "ocaml"; "ocamldep"; "byte"
+           ],
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
+            ]);
+          ([
+              "oasis_executable_ppx_protobuf_native";
+              "ocaml";
+              "ocamldep";
+              "native"
            ],
             [
                (OASISExpr.EBool true,
@@ -616,34 +632,23 @@ let package_default =
                  S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
             ]);
           ([
-              "oasis_executable_test_ppx_protobuf_byte";
-              "ocaml";
-              "link";
-              "byte"
-           ],
-            [(OASISExpr.EBool true, S [A "-ppx"; A "lib/ppx_protobuf.byte"])]);
-          ([
-              "oasis_executable_test_ppx_protobuf_byte";
-              "ocaml";
-              "ocamldep";
-              "byte"
-           ],
-            [(OASISExpr.EBool true, S [A "-ppx"; A "lib/ppx_protobuf.byte"])]);
-          ([
-              "oasis_executable_test_ppx_protobuf_byte";
+              "oasis_executable_ppx_protobuf_native";
               "ocaml";
               "compile";
-              "byte"
+              "native"
            ],
-            [(OASISExpr.EBool true, S [A "-ppx"; A "lib/ppx_protobuf.byte"])])
+            [
+               (OASISExpr.EBool true,
+                 S [A "-ppx"; A "ocamlfind ppx_tools/ppx_metaquot"])
+            ])
        ];
-     includes = [("lib_test", ["lib"])]
+     includes = []
   }
   ;;
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default package_default;;
 
-# 647 "myocamlbuild.ml"
+# 652 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch
   (MyOCamlbuildBase.dispatch_combine [

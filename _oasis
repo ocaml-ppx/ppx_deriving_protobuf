@@ -16,18 +16,12 @@ Executable ppx_protobuf
   Path:           lib
   BuildDepends:   compiler-libs.common, ppx_tools, extlib
   MainIs:         ppx_protobuf.ml
-  CompiledObject: byte
+  CompiledObject: best
   ByteOpt:        -ppx 'ocamlfind ppx_tools/ppx_metaquot'
-
-Executable test_ppx_protobuf
-  Build$:         flag(tests)
-  Install:        false
-  Path:           lib_test
-  MainIs:         test_ppx_protobuf.ml
-  BuildTools:     ppx_protobuf
-  BuildDepends:   protobuf, oUnit (>= 2), uint (>= 1.1.1)
-  CompiledObject: byte
-  ByteOpt:        -ppx lib/ppx_protobuf.byte
+  NativeOpt:      -ppx 'ocamlfind ppx_tools/ppx_metaquot'
 
 Test test_ppx_protobuf
-  Command:        $test_ppx_protobuf
+  Command:        ocamlbuild -I lib -package uint -package oUnit  \
+                             -cflags '-ppx $ppx_protobuf' \
+                             lib_test/test_ppx_protobuf.byte --
+  TestTools:      ppx_protobuf
