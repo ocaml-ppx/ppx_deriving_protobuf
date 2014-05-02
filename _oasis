@@ -1,6 +1,6 @@
 OASISFormat:  0.4
 Name:         ppx_protobuf
-Version:      0.1
+Version:      0.9.0
 Synopsis:     A Protobuf codec generator for OCaml >=4.02 based on extension points
 Authors:      Peter Zotov <whitequark@whitequark.org>
 License:      MIT
