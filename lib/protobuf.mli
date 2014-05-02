@@ -27,7 +27,11 @@ module Decoder : sig
   (** [of_string s] creates a decoder positioned at start of string [s]. *)
   val of_string : string -> t
 
-  (** [skip r pk] skips the next value of kind [pk] in [d].
+  (** [at_end d] returns [true] if [d] has exhausted its input, and [false]
+      otherwise. *)
+  val at_end    : t -> bool
+
+  (** [skip d pk] skips the next value of kind [pk] in [d].
       If skipping the value would exhaust input of [d], raises
       [Encoding_error Incomplete]. *)
   val skip      : t -> payload_kind -> unit

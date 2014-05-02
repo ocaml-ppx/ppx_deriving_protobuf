@@ -72,6 +72,9 @@ module Decoder = struct
   let of_string source =
     { source; offset = 0; limit = String.length source; }
 
+  let at_end d =
+    d.limit = d.offset
+
   let byte d =
     if d.offset >= d.limit then
       raise (Failure Incomplete);

@@ -273,6 +273,18 @@ let test_default ctxt =
   assert_roundtrip string_of_int d_to_protobuf d_from_protobuf
                    "\x08\x01" 1
 
+type p = int list [@packed] [@@protobuf]
+let test_packed ctxt =
+  let printer xs = Printf.sprintf "[%s]" (String.concat "; " (List.map string_of_int xs)) in
+  assert_roundtrip printer p_to_protobuf p_from_protobuf
+                   "" [];
+  assert_roundtrip printer p_to_protobuf p_from_protobuf
+                   "\x0a\x01\x01" [1];
+  assert_roundtrip printer p_to_protobuf p_from_protobuf
+                   "\x0a\x03\x01\x02\x03" [1; 2; 3];
+  let d = Protobuf.Decoder.of_string "\x0a\x01\x01\x0a\x02\x02\x03" in
+  assert_equal ~printer [1; 2; 3] (p_from_protobuf d)
+
 let test_errors ctxt =
   (* scalars *)
   let d = Protobuf.Decoder.of_string "" in
@@ -321,6 +333,7 @@ let suite = "Test syntax" >::: [
     "test_pvariant_bare"  >:: test_pvariant_bare;
     "test_imm_pv_bare"    >:: test_imm_pv_bare;
     "test_default"        >:: test_default;
+    "test_packed"         >:: test_packed;
     "test_errors"         >:: test_errors;
     "test_skip"           >:: test_skip;
   ]

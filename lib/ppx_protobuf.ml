@@ -12,6 +12,7 @@ type pb_encoding =
 | Pbe_bits32
 | Pbe_bits64
 | Pbe_bytes
+| Pbe_packed of pb_encoding
 and pb_type =
 | Pbt_bool
 | Pbt_int
@@ -40,7 +41,7 @@ and pb_field = {
   pbf_loc     : Location.t;
 }
 
-exception Pberr_attr_syntax   of Location.t * [ `Key | `Encoding | `Bare | `Default ]
+exception Pberr_attr_syntax   of Location.t * [ `Key | `Encoding | `Bare | `Default | `Packed ]
 exception Pberr_wrong_attr    of attribute
 exception Pberr_no_key        of Location.t
 exception Pberr_key_invalid   of Location.t * int
@@ -49,6 +50,7 @@ exception Pberr_abstract      of type_declaration
 exception Pberr_wrong_ty      of core_type
 exception Pberr_wrong_tparm   of core_type
 exception Pberr_no_conversion of Location.t * pb_type * pb_encoding
+exception Pberr_packed_bytes  of Location.t
 
 let with_formatter f =
   let buf = Buffer.create 16 in
@@ -65,13 +67,14 @@ let string_of_core_type ptyp =
 let string_of_lident lid =
   String.concat "." (Longident.flatten lid)
 
-let string_of_pb_encoding enc =
+let rec string_of_pb_encoding enc =
   match enc with
   | Pbe_varint -> "varint"
   | Pbe_zigzag -> "zigzag"
   | Pbe_bits32 -> "bits32"
   | Pbe_bits64 -> "bits64"
   | Pbe_bytes  -> "bytes"
+  | Pbe_packed enc -> "packed " ^ (string_of_pb_encoding enc)
 
 let pb_encoding_of_string str =
   match str with
@@ -106,10 +109,10 @@ let rec string_of_pb_type kind =
 let string_payload_kind_of_pb_encoding enc =
   "Protobuf." ^
   match enc with
-  | Pbe_varint | Pbe_zigzag -> "Varint"
+  | Pbe_varint | Pbe_zigzag   -> "Varint"
+  | Pbe_bytes  | Pbe_packed _ -> "Bytes"
   | Pbe_bits32 -> "Bits32"
   | Pbe_bits64 -> "Bits64"
-  | Pbe_bytes  -> "Bytes"
 
 let () =
   Location.register_error_of_exn (fun exn ->
@@ -122,6 +125,7 @@ let () =
                                    "bytes, e.g. [@encoding varint]"
         | `Bare     -> "bare", "[@bare]"
         | `Default  -> "default", "an expression, e.g. [@default \"foo\"]"
+        | `Packed   -> "packed", "[@packed]"
       in
       Some (errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation)
     | Pberr_wrong_attr ({ txt; loc }, _) ->
@@ -145,6 +149,8 @@ let () =
     | Pberr_no_conversion (loc, kind, enc) ->
       Some (errorf ~loc "\"%s\" is not a valid representation for %s"
                         (string_of_pb_encoding enc) (string_of_pb_type kind))
+    | Pberr_packed_bytes loc ->
+      Some (errorf ~loc "Only fields with varint, bits32 or bits64 encoding may be packed")
     | _ -> None)
 
 let mangle_lid ?(suffix="") lid =
@@ -187,11 +193,16 @@ let default_of_attrs attrs =
   | _, PStr [{ pstr_desc = Pstr_eval (expr, _) }] -> expr
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Default))
 
-let all_attrs = ["key"; "encoding"; "bare"; "default"]
-let check_attrs allow { ptyp_attributes } =
+let packed_of_attrs attrs =
+  match List.find (fun ({ txt }, _) -> txt = "packed") attrs with
+  | _, PStr [] -> ()
+  | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Packed))
+
+let all_attrs = ["key"; "encoding"; "bare"; "default"; "packed"]
+let check_attrs allow attrs =
   let forbid = List.filter (fun attr -> not (List.exists ((=) attr) allow)) all_attrs in
   forbid |> List.iter (fun attr ->
-    try  let attr = List.find (fun ({ txt }, _) -> txt = attr) ptyp_attributes in
+    try  let attr = List.find (fun ({ txt }, _) -> txt = attr) attrs in
          raise (Pberr_wrong_attr attr)
     with Not_found -> ())
 
@@ -199,23 +210,31 @@ let fields_of_ptype base_path ptype =
   let rec field_of_ptyp pbf_name pbf_path pbf_key pbf_kind ptyp =
     match ptyp with
     | [%type: [%t? arg] option] ->
-      check_attrs ["key"; "encoding"] ptyp;
+      check_attrs ["key"; "encoding"] ptyp.ptyp_attributes;
       begin match pbf_kind with
       | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_optional arg
       | _ -> raise (Pberr_wrong_ty ptyp)
       end
     | [%type: [%t? arg] array] | [%type: [%t? arg] list] ->
-      check_attrs ["key"; "encoding"] ptyp;
+      check_attrs ["key"; "encoding"; "packed"] ptyp.ptyp_attributes;
       begin match pbf_kind with
-      | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated arg
+      | Pbk_required ->
+        let { pbf_enc } as field = field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated arg in
+        let pbf_enc =
+          try  packed_of_attrs ptyp.ptyp_attributes; Pbe_packed pbf_enc
+          with Not_found -> pbf_enc
+        in
+        if pbf_enc = Pbe_packed Pbe_bytes then
+          raise (Pberr_packed_bytes ptyp.ptyp_loc);
+        { field with pbf_enc }
       | _ -> raise (Pberr_wrong_ty ptyp)
       end
     | { ptyp_desc = (Ptyp_tuple _ | Ptyp_variant _ | Ptyp_var _) as desc;
         ptyp_attributes = attrs; ptyp_loc; } ->
       begin match desc with
-      | Ptyp_variant _ -> check_attrs ["key"; "encoding"; "bare"; "default"] ptyp
-      | Ptyp_tuple _   -> check_attrs ["key"; "encoding"; "default"] ptyp
-      | _              -> check_attrs ["key"; "encoding"] ptyp
+      | Ptyp_variant _ -> check_attrs ["key"; "encoding"; "bare"; "default"; "packed"] attrs
+      | Ptyp_tuple _   -> check_attrs ["key"; "encoding"; "default"] attrs
+      | _              -> check_attrs ["key"; "encoding"] attrs
       end;
       let pbf_key =
         try  pb_key_of_attrs attrs
@@ -252,8 +271,8 @@ let fields_of_ptype base_path ptype =
         | _,  lident -> Pbt_nested (args, lident)
       in
       begin match pbf_type with
-      | Pbt_nested _ -> check_attrs ["key"; "encoding"; "bare"; "default"] ptyp
-      | _            -> check_attrs ["key"; "encoding"; "default"] ptyp
+      | Pbt_nested _ -> check_attrs ["key"; "encoding"; "bare"; "default"] attrs
+      | _            -> check_attrs ["key"; "encoding"; "default"; "packed"] attrs
       end;
       let pbf_key =
         try  pb_key_of_attrs attrs
@@ -323,6 +342,7 @@ let fields_of_ptype base_path ptype =
         | args  -> Some (Typ.tuple args)
       in
       ptyp |> Option.map (fun ptyp ->
+        check_attrs ["key"] attrs;
         let key = (pb_key_of_attrs attrs) + 1 in
         field_of_ptyp (Printf.sprintf "constr_%s" name)
                       (Printf.sprintf "%s.%s" base_path name)
@@ -422,7 +442,7 @@ let rec derive_reader fields ptype =
       [%expr let [%p pvar field.pbf_name] = ref [] in [%e mk_cells rest k]]
     | [] -> k
   in
-  let mk_reader { pbf_name; pbf_path; pbf_enc; pbf_type; } =
+  let rec mk_reader ({ pbf_name; pbf_path; pbf_enc; pbf_type; } as field) =
     let value =
       let ident = Exp.ident (lid ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))) in
       [%expr [%e ident] decoder]
@@ -485,17 +505,35 @@ let rec derive_reader fields ptype =
     (* poly *)
     | Pbt_poly var, Pbe_bytes ->
       [%expr [%e evar ("poly_" ^ var)] (Protobuf.Decoder.nested decoder)]
+    (* packed *)
+    | ty, Pbe_packed pbf_enc ->
+      let _reader = mk_reader { field with pbf_enc } in
+      [%expr assert false]
     | _ -> assert false
   in
   let rec mk_field_cases fields =
     match fields with
     | { pbf_key; pbf_name; pbf_enc; pbf_type; pbf_kind; pbf_path } as field :: rest ->
-      let updated =
-        match pbf_kind with
-        | Pbk_required | Pbk_optional ->
-          [%expr Some [%e mk_reader field]]
-        | Pbk_repeated ->
-          [%expr [%e mk_reader field] :: ![%e evar pbf_name]]
+      begin match pbf_kind, pbf_enc with
+      | Pbk_repeated, ((Pbe_varint | Pbe_zigzag | Pbe_bits64 | Pbe_bits32) as pbf_enc
+                      | Pbe_packed pbf_enc) ->
+        (* always recognize packed fields *)
+        [Exp.case [%pat? (Some ([%p pint pbf_key], Protobuf.Bytes))]
+                  [%expr [%e evar pbf_name] :=
+                           (let decoder = Protobuf.Decoder.nested decoder in
+                            let rec read rest =
+                              let value = [%e mk_reader { field with pbf_enc }] in
+                              if Protobuf.Decoder.at_end decoder then value :: rest
+                              else read (value :: rest)
+                            in read ![%e evar pbf_name]); read ()]]
+      | _ -> []
+      end @
+      let pbf_enc, updated =
+        match pbf_enc, pbf_kind with
+        | pbf_enc, (Pbk_required | Pbk_optional) ->
+          pbf_enc, [%expr Some [%e mk_reader field]]
+        | (Pbe_packed pbf_enc | pbf_enc), Pbk_repeated ->
+          pbf_enc, [%expr [%e mk_reader field] :: ![%e evar pbf_name]]
       in
       let payload_enc = string_payload_kind_of_pb_encoding pbf_enc in
       (Exp.case [%pat? Some ([%p pint pbf_key], [%p pconstr payload_enc []])]
@@ -718,31 +756,31 @@ let rec derive_writer fields ptype =
   let mk_writer ({ pbf_name; pbf_kind; pbf_key; pbf_enc; pbf_default } as field) =
     let key_writer   = [%expr Protobuf.Encoder.key ([%e int pbf_key ],
                           [%e constr (string_payload_kind_of_pb_encoding pbf_enc) []]) encoder] in
-    let value_writer = mk_value_writer field in
-    match pbf_kind with
-    | Pbk_required ->
-      let writer = [%expr [%e key_writer]; [%e value_writer]] in
+    match pbf_kind, pbf_enc with
+    | Pbk_required, _ ->
+      let writer = [%expr [%e key_writer]; [%e mk_value_writer field]] in
       begin match pbf_default with
       | Some default -> [%expr if [%e evar pbf_name] <> [%e default] then [%e writer]]
       | None -> writer
       end
-    | Pbk_optional ->
+    | Pbk_optional, _ ->
       [%expr
         match [%e evar pbf_name] with
-        | Some [%p pvar pbf_name] -> [%e key_writer]; [%e value_writer]
-        | None -> ()
-      ]
-    | Pbk_repeated ->
+        | Some [%p pvar pbf_name] -> [%e key_writer]; [%e mk_value_writer field]
+        | None -> ()]
+    | Pbk_repeated, Pbe_packed pbf_enc ->
+      let value_writer = mk_value_writer { field with pbf_enc } in
       [%expr
-        let rec write lst =
-          match lst with
-          | [%p pvar pbf_name] :: rest ->
-            [%e key_writer]; [%e value_writer];
-            write rest
-          | [] -> ()
-        in
-        write [%e evar pbf_name]
-      ]
+        if [%e evar pbf_name] <> [] then begin
+          [%e key_writer];
+          Protobuf.Encoder.nested (fun encoder ->
+              List.iter (fun [%p pvar pbf_name] -> [%e value_writer]) [%e evar pbf_name])
+            encoder
+        end]
+    | Pbk_repeated, _ ->
+      [%expr
+        List.iter (fun [%p pvar pbf_name] ->
+          [%e key_writer]; [%e mk_value_writer field]) [%e evar pbf_name]]
   in
   let mk_writers fields =
     List.fold_right (fun field k ->
