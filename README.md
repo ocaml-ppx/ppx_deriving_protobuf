@@ -11,6 +11,7 @@ Installation
 
 (Not yet)
 
+    $ opam pin ppx_tools https://github.com/alainfrisch/ppx_tools.git
     $ opam install ppx_protobuf
 
 Usage
@@ -402,6 +403,24 @@ The generated deserializer code will refer to `bar_from_protobuf` and
 `Baz.Quux.t_from_protobuf`; the serializer code will call `bar_to_protobuf`
 and `Baz.Quux.t_to_protobuf`.
 
+### Packed fields
+
+Types which are encoded as `varint`, `bits32` or `bits64`, that is, numeric
+fields or bare variants, can be declared as "packed" with the `[@packed]` attribute,
+in which case the serializer emits a more compact representation. Only _protoc_ newer
+than 2.3.0 will recognize this representation. Note that the deserializer
+understands it regardless of the presence of `[@packed]` attribute.
+
+``` protoc
+message Packed {
+  repeated int32 elem = 1 [packed=true];
+}
+```
+
+``` ocaml
+type packed = int list [@key 1] [@packed] [@@protobuf]
+```
+
 ### Parametric polymorphism
 
 _ppx_protobuf_ is able to handle polymorphic type definitions. In this case,
@@ -565,7 +584,7 @@ without losing the ability to decode messages from existing senders:
 Compatibility
 -------------
 
-Protocol Buffers specification [suggests][merge] that if a message contains
+Protocol Buffers specification [suggests][optional] that if a message contains
 multiple instances of a `required` or `optional` nested message, those nested
 messages should be merged. However, there is no concept of "merging messages"
 accessible to _ppx_protobuf_, and this feature can be considered harmful anyway:
@@ -579,7 +598,7 @@ a common error without this countermeasure.
 
 Everything else should be entirely compatible with _protoc_.
 
-[merge]: https://developers.google.com/protocol-buffers/docs/encoding#optional
+[optional]: https://developers.google.com/protocol-buffers/docs/encoding#optional
 
 License
 -------
