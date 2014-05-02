@@ -320,9 +320,30 @@ a single `varint`.
 
 ### Polymorphic variants
 
-Polymorphic variants are currently not supported; see [bug #6387][b6387].
+Polymorphic variants are handled in exactly same way as regular variants. However,
+you can also embed them directly, like tuples, in which case the semantics is
+the same as defining an alias for the variant and then using that type.
 
-[b6387]: http://caml.inria.fr/mantis/view.php?id=6387
+This feature can be combined with the `[@bare]` annotation to create a useful
+shorthand:
+
+``` protoc
+message Packet {
+  enum Type {
+    REQUEST = 1;
+    REPLY   = 2;
+  }
+  required Type  type  = 1;
+  required int32 value = 2;
+}
+```
+
+``` ocaml
+type packet = {
+  type  : [ `Request [@key 1] | `Reply [@key 2] ] [@key 1] [@bare];
+  value : int [@key 2];
+} [@@protobuf]
+```
 
 ### Type aliases
 

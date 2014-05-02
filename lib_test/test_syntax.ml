@@ -233,14 +233,38 @@ let test_poly_variant ctxt =
                    "\x08\x03\x22\x0a\x0a\x03abc\x12\x03def" (`V3C ("abc", "def"))
 
 type r6 = {
-  r6a : [ `A [@key 1] | `B [@key 2] ] [@key 1];
+  r6a : [ `R6A [@key 1] | `R6B [@key 2] ] [@key 1];
 } [@@protobuf]
 let test_imm_pvariant ctxt =
   let printer { r6a } =
-    match r6a with `A -> "{ r6a = `A }" | `B -> "{ r6a = `B }"
+    match r6a with `R6A -> "{ r6a = `R6A }" | `R6B -> "{ r6a = `R6B }"
   in
   assert_roundtrip printer r6_to_protobuf r6_from_protobuf
-                   "\x0a\x02\x08\x02" { r6a = `B }
+                   "\x0a\x02\x08\x02" { r6a = `R6B }
+
+type v4 = [ `V4A [@key 1] | `V4B [@key 2] ]
+and r7 = {
+  r7a : v4 [@key 1] [@bare]
+} [@@protobuf]
+let test_pvariant_bare ctxt =
+  let printer { r7a } =
+    match r7a with `V4A -> "{ r7a = `V4A }" | `V4B -> "{ r7a = `V4B }"
+  in
+  assert_roundtrip printer r7_to_protobuf r7_from_protobuf
+                   "\x08\x01" { r7a = `V4A }
+
+type r8 = {
+  r8a : [ `Request [@key 1] | `Reply [@key 2] ] [@key 1] [@bare];
+  r8b : int [@key 2];
+} [@@protobuf]
+let test_imm_pv_bare ctxt =
+  let printer { r8a; r8b } =
+    match r8a with
+    | `Request -> Printf.sprintf "{ r8a = `Request; r8b = %d }" r8b
+    | `Reply   -> Printf.sprintf "{ r8a = `Reply; r8b = %d }" r8b
+  in
+  assert_roundtrip printer r8_to_protobuf r8_from_protobuf
+                   "\x08\x01\x10\x2a" { r8a = `Request; r8b = 42 }
 
 let test_errors ctxt =
   (* scalars *)
@@ -269,24 +293,26 @@ let test_skip ctxt =
                 (fun () -> s_from_protobuf d)
 
 let suite = "Test syntax" >::: [
-    "test_bool"         >:: test_bool;
-    "test_ints"         >:: test_ints;
-    "test_uints"        >:: test_uints;
-    "test_floats"       >:: test_floats;
-    "test_string"       >:: test_string;
-    "test_option"       >:: test_option;
-    "test_list"         >:: test_list;
-    "test_array"        >:: test_array;
-    "test_tuple"        >:: test_tuple;
-    "test_record"       >:: test_record;
-    "test_nested"       >:: test_nested;
-    "test_imm_tuple"    >:: test_imm_tuple;
-    "test_variant"      >:: test_variant;
-    "test_variant_bare" >:: test_variant_bare;
-    "test_tvar"         >:: test_tvar;
-    "test_mylist"       >:: test_mylist;
-    "test_poly_variant" >:: test_poly_variant;
-    "test_imm_pvariant" >:: test_imm_pvariant;
-    "test_errors"       >:: test_errors;
-    "test_skip"         >:: test_skip;
+    "test_bool"           >:: test_bool;
+    "test_ints"           >:: test_ints;
+    "test_uints"          >:: test_uints;
+    "test_floats"         >:: test_floats;
+    "test_string"         >:: test_string;
+    "test_option"         >:: test_option;
+    "test_list"           >:: test_list;
+    "test_array"          >:: test_array;
+    "test_tuple"          >:: test_tuple;
+    "test_record"         >:: test_record;
+    "test_nested"         >:: test_nested;
+    "test_imm_tuple"      >:: test_imm_tuple;
+    "test_variant"        >:: test_variant;
+    "test_variant_bare"   >:: test_variant_bare;
+    "test_tvar"           >:: test_tvar;
+    "test_mylist"         >:: test_mylist;
+    "test_poly_variant"   >:: test_poly_variant;
+    "test_imm_pvariant"   >:: test_imm_pvariant;
+    "test_pvariant_bare"  >:: test_pvariant_bare;
+    "test_imm_pv_bare"    >:: test_imm_pv_bare;
+    "test_errors"         >:: test_errors;
+    "test_skip"           >:: test_skip;
   ]
