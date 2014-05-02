@@ -1,6 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: c32afb8d3bdd9d24b4b223a7fd495d5d)
-version = "0.1"
+# DO NOT EDIT (digest: 60fe003956bef8c5f692aaedb42d55e4)
+version = "0.9.0"
 description =
 "A Protobuf codec generator for OCaml >=4.02 based on extension points"
 archive(byte) = "protobuf.cma"
