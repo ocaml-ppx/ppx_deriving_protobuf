@@ -30,16 +30,18 @@ and pb_kind =
 | Pbk_optional
 | Pbk_repeated
 and pb_field = {
-  pbf_name  : string;
-  pbf_path  : string;
-  pbf_key   : int;
-  pbf_enc   : pb_encoding;
-  pbf_type  : pb_type;
-  pbf_kind  : pb_kind;
-  pbf_loc   : Location.t;
+  pbf_name    : string;
+  pbf_path    : string;
+  pbf_key     : int;
+  pbf_enc     : pb_encoding;
+  pbf_type    : pb_type;
+  pbf_kind    : pb_kind;
+  pbf_default : expression option;
+  pbf_loc     : Location.t;
 }
 
-exception Pberr_attr_syntax   of Location.t * [ `Key | `Encoding | `Bare ]
+exception Pberr_attr_syntax   of Location.t * [ `Key | `Encoding | `Bare | `Default ]
+exception Pberr_wrong_attr    of attribute
 exception Pberr_no_key        of Location.t
 exception Pberr_key_invalid   of Location.t * int
 exception Pberr_key_duplicate of int * Location.t * Location.t
@@ -119,8 +121,11 @@ let () =
         | `Encoding -> "encoding", "one of: bool, varint, zigzag, bits32, bits64, " ^
                                    "bytes, e.g. [@encoding varint]"
         | `Bare     -> "bare", "[@bare]"
+        | `Default  -> "default", "an expression, e.g. [@default \"foo\"]"
       in
       Some (errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation)
+    | Pberr_wrong_attr ({ txt; loc }, _) ->
+      Some (errorf ~loc "Attribute @%s is not recognized here" txt)
     | Pberr_no_key loc ->
       Some (errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]")
     | Pberr_key_invalid (loc, key) ->
@@ -172,26 +177,46 @@ let pb_encoding_of_attrs attrs =
     end
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Encoding))
 
-let pb_bare_of_attrs attrs =
+let bare_of_attrs attrs =
   match List.find (fun ({ txt }, _) -> txt = "bare") attrs with
   | _, PStr [] -> ()
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Bare))
+
+let default_of_attrs attrs =
+  match List.find (fun ({ txt }, _) -> txt = "default") attrs with
+  | _, PStr [{ pstr_desc = Pstr_eval (expr, _) }] -> expr
+  | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Default))
+
+let all_attrs = ["key"; "encoding"; "bare"; "default"]
+let check_attrs allow { ptyp_attributes } =
+  let forbid = List.filter (fun attr -> not (List.exists ((=) attr) allow)) all_attrs in
+  forbid |> List.iter (fun attr ->
+    try  let attr = List.find (fun ({ txt }, _) -> txt = attr) ptyp_attributes in
+         raise (Pberr_wrong_attr attr)
+    with Not_found -> ())
 
 let fields_of_ptype base_path ptype =
   let rec field_of_ptyp pbf_name pbf_path pbf_key pbf_kind ptyp =
     match ptyp with
     | [%type: [%t? arg] option] ->
+      check_attrs ["key"; "encoding"] ptyp;
       begin match pbf_kind with
       | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_optional arg
       | _ -> raise (Pberr_wrong_ty ptyp)
       end
     | [%type: [%t? arg] array] | [%type: [%t? arg] list] ->
+      check_attrs ["key"; "encoding"] ptyp;
       begin match pbf_kind with
       | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated arg
       | _ -> raise (Pberr_wrong_ty ptyp)
       end
     | { ptyp_desc = (Ptyp_tuple _ | Ptyp_variant _ | Ptyp_var _) as desc;
         ptyp_attributes = attrs; ptyp_loc; } ->
+      begin match desc with
+      | Ptyp_variant _ -> check_attrs ["key"; "encoding"; "bare"; "default"] ptyp
+      | Ptyp_tuple _   -> check_attrs ["key"; "encoding"; "default"] ptyp
+      | _              -> check_attrs ["key"; "encoding"] ptyp
+      end;
       let pbf_key =
         try  pb_key_of_attrs attrs
         with Not_found ->
@@ -203,14 +228,16 @@ let fields_of_ptype base_path ptype =
         match desc with
         | Ptyp_variant _ ->
           let pbf_enc =
-            try  pb_bare_of_attrs attrs; Pbe_varint
+            try  bare_of_attrs attrs; Pbe_varint
             with Not_found -> Pbe_bytes
           in pbf_enc, Pbt_imm ptyp
         | Ptyp_tuple _   -> Pbe_bytes, Pbt_imm ptyp
         | Ptyp_var var   -> Pbe_bytes, Pbt_poly var
         | _ -> assert false
       in
-      { pbf_name; pbf_key; pbf_kind; pbf_path; pbf_type; pbf_enc; pbf_loc  = ptyp_loc; }
+      { pbf_name; pbf_key; pbf_kind; pbf_path; pbf_type; pbf_enc;
+        pbf_loc     = ptyp_loc;
+        pbf_default = try Some (default_of_attrs attrs) with Not_found -> None; }
     | { ptyp_desc = Ptyp_constr ({ txt = lid }, args); ptyp_attributes = attrs; ptyp_loc; } ->
       let pbf_type =
         match args, lid with
@@ -224,6 +251,10 @@ let fields_of_ptype base_path ptype =
         | [], (Lident "uint64" | Ldot (Lident "Uint64", "t")) -> Pbt_uint64
         | _,  lident -> Pbt_nested (args, lident)
       in
+      begin match pbf_type with
+      | Pbt_nested _ -> check_attrs ["key"; "encoding"; "bare"; "default"] ptyp
+      | _            -> check_attrs ["key"; "encoding"; "default"] ptyp
+      end;
       let pbf_key =
         try  pb_key_of_attrs attrs
         with Not_found ->
@@ -242,7 +273,7 @@ let fields_of_ptype base_path ptype =
           | Pbt_string | Pbt_imm _   | Pbt_poly _ -> Pbe_bytes
           | Pbt_nested _ ->
             begin
-              try  pb_bare_of_attrs attrs; Pbe_varint
+              try  bare_of_attrs attrs; Pbe_varint
               with Not_found -> Pbe_bytes
             end
           | Pbt_variant _ -> assert false
@@ -255,7 +286,8 @@ let fields_of_ptype base_path ptype =
       | Pbt_string, Pbe_bytes
       | Pbt_nested _, (Pbe_bytes | Pbe_varint) ->
         { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind; pbf_path;
-          pbf_loc = ptyp_loc; }
+          pbf_loc     = ptyp_loc;
+          pbf_default = try Some (default_of_attrs attrs) with Not_found -> None }
       | _ ->
         raise (Pberr_no_conversion (ptyp_loc, pbf_type, pbf_enc))
       end
@@ -275,13 +307,14 @@ let fields_of_ptype base_path ptype =
       constrs' |> List.iter (fun (key', (_, _, _, loc') as pcd') ->
         if pcd != pcd' && key = key' then
           raise (Pberr_key_duplicate (key, loc', loc))));
-    { pbf_name = "variant";
-      pbf_key  = 1;
-      pbf_enc  = Pbe_varint;
-      pbf_type = Pbt_variant (constrs' |> List.map (fun (key, (name, _, _, _)) -> key, name));
-      pbf_kind = Pbk_required;
-      pbf_loc  = loc;
-      pbf_path = base_path; } ::
+    { pbf_name    = "variant";
+      pbf_path    = base_path;
+      pbf_key     = 1;
+      pbf_enc     = Pbe_varint;
+      pbf_type    = Pbt_variant (constrs' |> List.map (fun (key, (name, _, _, _)) -> key, name));
+      pbf_kind    = Pbk_required;
+      pbf_loc     = loc;
+      pbf_default = None; } ::
     (constrs |> ExtList.List.filter_map (fun (name, args, attrs, loc) ->
       let ptyp =
         match args with
@@ -481,7 +514,9 @@ let rec derive_reader fields ptype =
                  Exp.case [%pat? None] [%expr ()]])
   in
   let construct_ptyp pbf_name ptyp =
-    let { pbf_path } = fields |> List.find (fun { pbf_name = pbf_name' } -> pbf_name' = pbf_name) in
+    let { pbf_path; pbf_default } =
+      fields |> List.find (fun { pbf_name = pbf_name' } -> pbf_name' = pbf_name)
+    in
     match ptyp with
     | [%type: [%t? _] option] ->
       [%expr ![%e evar pbf_name]]
@@ -490,11 +525,9 @@ let rec derive_reader fields ptype =
     | [%type: [%t? _] array] ->
       [%expr Array.of_list (List.rev (![%e evar pbf_name]))]
     | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _ | Ptyp_variant _ | Ptyp_var _); } ->
-      [%expr
-        match ![%e evar pbf_name] with
-        | None   -> raise Protobuf.Decoder.(Failure (Missing_field [%e str pbf_path]))
-        | Some v -> v
-      ]
+      let default = [%expr raise Protobuf.Decoder.(Failure (Missing_field [%e str pbf_path]))] in
+      let default = Option.default default pbf_default in
+      [%expr match ![%e evar pbf_name] with None -> [%e default] | Some v -> v ]
     | _ -> assert false
   in
   let mk_variant ptype_name ptype_loc mk_constr constrs =
@@ -682,13 +715,17 @@ let rec derive_writer fields ptype =
       [%expr Protobuf.Encoder.nested ([%e evar ("poly_" ^ var)] [%e evar pbf_name]) encoder]
     | _ -> assert false
   in
-  let mk_writer ({ pbf_name; pbf_kind; pbf_key; pbf_enc } as field) =
+  let mk_writer ({ pbf_name; pbf_kind; pbf_key; pbf_enc; pbf_default } as field) =
     let key_writer   = [%expr Protobuf.Encoder.key ([%e int pbf_key ],
                           [%e constr (string_payload_kind_of_pb_encoding pbf_enc) []]) encoder] in
     let value_writer = mk_value_writer field in
     match pbf_kind with
     | Pbk_required ->
-      [%expr [%e key_writer]; [%e value_writer]]
+      let writer = [%expr [%e key_writer]; [%e value_writer]] in
+      begin match pbf_default with
+      | Some default -> [%expr if [%e evar pbf_name] <> [%e default] then [%e writer]]
+      | None -> writer
+      end
     | Pbk_optional ->
       [%expr
         match [%e evar pbf_name] with
@@ -821,8 +858,7 @@ let protobuf_mapper argv =
         match items with
         | { pstr_desc = Pstr_type ty_decls } as item :: rest when
             List.exists (fun ty -> has_attr "protobuf" ty.ptype_attributes) ty_decls ->
-          begin try derive item @ map_types rest
-          with exn -> Printexc.print_backtrace stderr; exit 1 end
+          derive item @ map_types rest
         | item :: rest ->
           mapper.structure_item mapper item :: map_types rest
         | [] -> []

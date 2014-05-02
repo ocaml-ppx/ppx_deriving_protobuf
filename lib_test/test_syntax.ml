@@ -266,6 +266,13 @@ let test_imm_pv_bare ctxt =
   assert_roundtrip printer r8_to_protobuf r8_from_protobuf
                    "\x08\x01\x10\x2a" { r8a = `Request; r8b = 42 }
 
+type d = int [@default 42] [@@protobuf]
+let test_default ctxt =
+  assert_roundtrip string_of_int d_to_protobuf d_from_protobuf
+                   "" 42;
+  assert_roundtrip string_of_int d_to_protobuf d_from_protobuf
+                   "\x08\x01" 1
+
 let test_errors ctxt =
   (* scalars *)
   let d = Protobuf.Decoder.of_string "" in
@@ -313,6 +320,7 @@ let suite = "Test syntax" >::: [
     "test_imm_pvariant"   >:: test_imm_pvariant;
     "test_pvariant_bare"  >:: test_pvariant_bare;
     "test_imm_pv_bare"    >:: test_imm_pv_bare;
+    "test_default"        >:: test_default;
     "test_errors"         >:: test_errors;
     "test_skip"           >:: test_skip;
   ]

@@ -51,8 +51,9 @@ code based on _protoc_ definitions. Instead, it generates code based on OCaml ty
 definitions.
 
 _ppx_protobuf_-generated serializers are derived from the structure of the type
-and several attributes: `@key`, `@encoding` and `@bare`. Generation of the serializer
-is triggered by a `@@protobuf` attribute attached to the type definition.
+and several attributes: `@key`, `@encoding`, `@bare` and `@default`. Generation
+of the serializer is triggered by a `@@protobuf` attribute attached to the type
+definition.
 
 _ppx_protobuf_ generates two functions per type:
 
@@ -103,6 +104,31 @@ type search_request = {
 
 _ppx_protobuf_ recognizes and maps `option` to optional fields, and
 `list` and `array` to repeated fields.
+
+### Optional and default fields
+
+A `[@default]` attribute attached to a required field converts it to an optional
+field; if the field is not present, its value is assumed to be the default one,
+and conversely, if the value of the field is same as the default value, it is
+not serialized:
+
+``` protoc
+message Defaults {
+  optional int32 results = 1 [default = 10];
+}
+```
+
+``` ocaml
+type defaults = {
+  results : int [@key 1] [@default 10];
+}
+```
+
+Note that _protoc_'s default behavior is to assign a type-specific default value
+to optional fields missing from message, i.e. `0` to integer fields, `""` to
+string fields, and so on. With _ppx_protobuf_, optional fields are represented
+with the `option` type; it is possible to emulate _protoc_'s behavior by explicitly
+specifying `int [@default 0]`, etc.
 
 ### Integers
 
@@ -546,7 +572,7 @@ accessible to _ppx_protobuf_, and this feature can be considered harmful anyway:
 it is far too forgiving of invalid input. Thus, _ppx_protobuf_ doesn't implement
 this merging.
 
-_ppx_protobuf_ is more strict than protoc with numeric types; it raises
+_ppx_protobuf_ is more strict than _protoc_ with numeric types; it raises
 `Failure (Overflow fld)` rather than silently truncate values. It is thought
 that accidentally losing 32th or 64th bit with OCaml's `int` type would be
 a common error without this countermeasure.
