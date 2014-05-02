@@ -532,6 +532,8 @@ of the message without breaking protocol:
     or an optional argument to a constructor **with multiple arguments**.
   * Converting an optional field, tuple element or constructor argument
     into a repeated one.
+  * Converting an optional field, tuple element or constructor argument
+    into a required field with a default value, or vice versa.
   * Converting a repeated field, tuple element or constructor argument
     into an optional one (this is not recommended, as it silently ignores
     some of input data).
