@@ -478,21 +478,6 @@ complicated, but very powerful and practical solution to this problem.
 The wire protocol is designed in a way that allows to safely extend it if
 one follows a set of constraints.
 
-### Never
-
-Violating any of the following constraints always results in exceptions or
-receiving garbage data:
-
-  * Never change `[@key]` or `[@encoding]` annotations; never add or remove
-    `[@bare]` annotation.
-  * Never change primitive (i.e. excluding `list`, `option` or `array` qualifiers)
-    types of existing fields, tuple elements or constructor arguments.
-  * Never remove required fields, tuple elements or constructor arguments.
-  * Never replace a primitive type of a field, tuple element or constructor argument
-    with a tuple, even if the first element of the replacing tuple is
-    the former primitive type.
-  * Never add arguments to an argument-less variant constructor, or vice versa.
-
 ### Always
 
 Any of the following changes may be applied to either the sender or receiver
@@ -508,6 +493,24 @@ of the message without breaking protocol:
   * Turning an alias into a record that has a field marked `[@key 1]`.
   * Turning an alias into a tuple where the first element is the former
     type of the alias (this is not recommended for reasons of code clarity).
+
+### Never
+
+When communicating bidirectionally, violating any of the following constraints
+always results in exceptions or receiving garbage data:
+
+  * Never change `[@key]` or `[@encoding]` annotations; never add or remove
+    `[@bare]` annotation.
+  * Never change primitive (i.e. excluding `list`, `option` or `array` qualifiers)
+    types of existing fields, tuple elements or constructor arguments.
+  * Never remove required fields, tuple elements or constructor arguments.
+  * Never replace a primitive type of a field, tuple element or constructor argument
+    with a tuple, even if the first element of the replacing tuple is
+    the former primitive type.
+  * Never add arguments to an argument-less variant constructor, or vice versa.
+
+The following sections list some exceptions to this rule when the communication
+is unidirectional.
 
 ### On sender
 
