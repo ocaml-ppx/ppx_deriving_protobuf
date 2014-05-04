@@ -1,31 +1,3 @@
 true: warn(@5@8@10@11@12@14@23@24@26@29)
-
 # OASIS_START
-# DO NOT EDIT (digest: d4243a7b7bfce2223ecc63d9c40b22ef)
-# Ignore VCS directories, you can use the same kind of rule outside
-# OASIS_START/STOP if you want to exclude directories that contains
-# useless stuff for the build process
-<**/.svn>: -traverse
-<**/.svn>: not_hygienic
-".bzr": -traverse
-".bzr": not_hygienic
-".hg": -traverse
-".hg": not_hygienic
-".git": -traverse
-".git": not_hygienic
-"_darcs": -traverse
-"_darcs": not_hygienic
-# Library protobuf
-"lib/protobuf.cmxs": use_protobuf
-# Executable ppx_protobuf
-<lib/ppx_protobuf.{native,byte}>: oasis_executable_ppx_protobuf_byte
-<lib/*.ml{,i}>: oasis_executable_ppx_protobuf_byte
-<lib/ppx_protobuf.{native,byte}>: oasis_executable_ppx_protobuf_native
-<lib/*.ml{,i}>: oasis_executable_ppx_protobuf_native
-<lib/ppx_protobuf.{native,byte}>: package(compiler-libs.common)
-<lib/ppx_protobuf.{native,byte}>: package(extlib)
-<lib/ppx_protobuf.{native,byte}>: package(ppx_tools)
-<lib/*.ml{,i}>: package(compiler-libs.common)
-<lib/*.ml{,i}>: package(extlib)
-<lib/*.ml{,i}>: package(ppx_tools)
 # OASIS_STOP
