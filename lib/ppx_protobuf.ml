@@ -47,6 +47,7 @@ exception Pberr_no_key        of Location.t
 exception Pberr_key_invalid   of Location.t * int
 exception Pberr_key_duplicate of int * Location.t * Location.t
 exception Pberr_abstract      of type_declaration
+exception Pberr_open          of type_declaration
 exception Pberr_wrong_ty      of core_type
 exception Pberr_wrong_tparm   of core_type
 exception Pberr_no_conversion of Location.t * pb_type * pb_encoding
@@ -141,7 +142,9 @@ let () =
       Some (errorf ~loc:loc1 "Key %d is already used" key
                    ~sub:[errorf ~loc:loc2 "Initially defined here"])
     | Pberr_abstract { ptype_loc = loc } ->
-      Some (errorf ~loc "Type is abstract")
+      Some (errorf ~loc "Abstract types are not supported")
+    | Pberr_open { ptype_loc = loc } ->
+      Some (errorf ~loc "Open types are not supported")
     | Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp) ->
       Some (errorf ~loc "Type %s does not have a Protobuf mapping" (string_of_core_type ptyp))
     | Pberr_wrong_tparm ({ ptyp_loc = loc } as ptyp) ->
@@ -159,9 +162,8 @@ let mangle_lid ?(suffix="") lid =
   | Ldot (p, s) -> Ldot (p, s ^ suffix)
   | Lapply _    -> assert false
 
-let module_name loc =
-  let (file, _, _) = get_pos_info loc.loc_start in
-  String.capitalize (Filename.(basename (chop_suffix file ".ml")))
+let module_name () =
+  String.capitalize (Filename.(basename (chop_suffix !Location.input_name ".ml")))
 
 let pb_key_of_attrs attrs =
   match List.find (fun ({ txt }, _) -> txt = "key") attrs with
@@ -366,6 +368,8 @@ let fields_of_ptype base_path ptype =
       [field_of_ptyp "alias" base_path (Some 1) Pbk_required ptyp]
     | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
       raise (Pberr_abstract ptype)
+    | { ptype_kind = Ptype_open } ->
+      raise (Pberr_open ptype)
     | { ptype_kind = Ptype_record fields } ->
       fields |> List.mapi (fun i { pld_name = { txt = name }; pld_type; } ->
         field_of_ptyp ("field_" ^ name) (Printf.sprintf "%s.%s" base_path name)
@@ -382,9 +386,9 @@ let fields_of_ptype base_path ptype =
 
 let rec mk_poly tvars k =
   match tvars with
-  | (Some { txt }, _) :: rest ->
-    [%expr fun [%p pvar ("poly_" ^ txt)] -> [%e mk_poly rest k]]
-  | (None, _) :: rest -> mk_poly rest k
+  | ({ ptyp_desc = Ptyp_var var }, _) :: rest ->
+    [%expr fun [%p pvar ("poly_" ^ var)] -> [%e mk_poly rest k]]
+  | (_, _) :: rest -> mk_poly rest k
   | [] -> k
 
 let derive_reader_bare fields ptype =
@@ -396,7 +400,7 @@ let derive_reader_bare fields ptype =
                     (Int64.of_int (pb_key_of_attrs attrs))))
                   (mk_constr name)) :: mk_variant_cases rest
       | [] ->
-        let name = (module_name ptype.ptype_loc) ^ "." ^ ptype.ptype_name.txt in
+        let name = (module_name ()) ^ "." ^ ptype.ptype_name.txt in
         [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
                               (Failure (Malformed_variant [%e str name]))]]
     in
@@ -599,7 +603,7 @@ let rec derive_reader fields ptype =
                    [%expr let [%p ptuple pargs'] = arg in [%e mk_constr name eargs']]
         end :: mk_variant_cases rest
       | [] ->
-        let name = (module_name ptype_loc) ^ "." ^ ptype_name.txt in
+        let name = (module_name ()) ^ "." ^ ptype_name.txt in
         [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
                               (Failure (Malformed_variant [%e str name]))]]
     in
@@ -626,7 +630,7 @@ let rec derive_reader fields ptype =
             | args  -> Exp.variant name (Some (tuple args)))
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
       construct_ptyp "alias" ptyp
-    | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
+    | { ptype_kind = (Ptype_abstract | Ptype_open) } ->
       assert false
     | { ptype_kind = Ptype_record fields; } ->
       Exp.record (List.mapi (fun i { pld_name; pld_type; } ->
@@ -853,7 +857,7 @@ let rec derive_writer fields ptype =
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
       [%expr let alias = value in
              [%e deconstruct_ptyp "alias" ptyp (mk_writers fields)]]
-    | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
+    | { ptype_kind = (Ptype_abstract | Ptype_open) } ->
       assert false
     | { ptype_kind = Ptype_record ldecls; } ->
       [%expr
@@ -879,7 +883,7 @@ let derive item =
     let derived =
       ty_decls |>
       List.map (fun ({ ptype_name = { txt = name }; ptype_loc } as ptype) ->
-        let fields = fields_of_ptype ((module_name ptype_loc) ^ "." ^ name) ptype in
+        let fields = fields_of_ptype ((module_name ()) ^ "." ^ name) ptype in
         [derive_reader fields ptype] @
         (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype)) @
         [derive_writer fields ptype] @
