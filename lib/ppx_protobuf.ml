@@ -163,7 +163,9 @@ let mangle_lid ?(suffix="") lid =
   | Lapply _    -> assert false
 
 let module_name () =
-  String.capitalize (Filename.(basename (chop_suffix !Location.input_name ".ml")))
+  match !Location.input_name with
+  | "//toplevel//" -> "(toplevel)"
+  | filename -> String.capitalize (Filename.(basename (chop_suffix filename ".ml")))
 
 let find_attr name attrs =
   let prefixed_name = "protobuf." ^ name in
