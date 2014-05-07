@@ -376,7 +376,8 @@ let fields_of_ptype base_path ptype =
     | { ptype_kind = Ptype_open } ->
       raise (Pberr_open ptype)
     | { ptype_kind = Ptype_record fields } ->
-      fields |> List.mapi (fun i { pld_name = { txt = name }; pld_type; } ->
+      fields |> List.mapi (fun i { pld_name = { txt = name }; pld_type; pld_attributes; } ->
+        check_attrs [] pld_attributes;
         field_of_ptyp ("field_" ^ name) (Printf.sprintf "%s.%s" base_path name)
                       None Pbk_required pld_type)
     | { ptype_kind = Ptype_variant constrs; ptype_loc } ->
