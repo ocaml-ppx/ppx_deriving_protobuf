@@ -266,6 +266,34 @@ let test_imm_pv_bare ctxt =
   assert_roundtrip printer r8_to_protobuf r8_from_protobuf
                    "\x08\x01\x10\x2a" { r8a = `Request; r8b = 42 }
 
+type v5 =
+| V5A [@key 1] of int option
+| V5B [@key 2] of string list
+| V5C [@key 3] of int array
+| V5D [@key 4]
+[@@protobuf]
+let test_variant_optrep ctxt =
+  let printer v5 =
+    match v5 with
+    | V5A io -> (match io with Some i -> Printf.sprintf "V5A %d" i | None -> "V5A None")
+    | V5B sl -> Printf.sprintf "V5B [%s]" (String.concat "; " sl)
+    | V5C ia -> Printf.sprintf "V5C [|%s|]" (String.concat "; "
+                                              (List.map string_of_int (Array.to_list ia)))
+    | V5D -> "V5D"
+  in
+  assert_roundtrip printer v5_to_protobuf v5_from_protobuf
+                   "\x08\x01\x10\x2a" (V5A (Some 42));
+  assert_roundtrip printer v5_to_protobuf v5_from_protobuf
+                   "\x08\x01" (V5A None);
+  assert_roundtrip printer v5_to_protobuf v5_from_protobuf
+                   "\x08\x02\x1a\x0242\x1a\x0243" (V5B ["42"; "43"]);
+  assert_roundtrip printer v5_to_protobuf v5_from_protobuf
+                   "\x08\x02" (V5B []);
+  assert_roundtrip printer v5_to_protobuf v5_from_protobuf
+                   "\x08\x03\x20\x2a\x20\x2b" (V5C [|42; 43|]);
+  assert_roundtrip printer v5_to_protobuf v5_from_protobuf
+                   "\x08\x03" (V5C [||])
+
 type d = int [@default 42] [@@protobuf]
 let test_default ctxt =
   assert_roundtrip string_of_int d_to_protobuf d_from_protobuf
@@ -332,6 +360,7 @@ let suite = "Test syntax" >::: [
     "test_imm_pvariant"   >:: test_imm_pvariant;
     "test_pvariant_bare"  >:: test_pvariant_bare;
     "test_imm_pv_bare"    >:: test_imm_pv_bare;
+    "test_variant_optrep" >:: test_variant_optrep;
     "test_default"        >:: test_default;
     "test_packed"         >:: test_packed;
     "test_errors"         >:: test_errors;

@@ -597,17 +597,35 @@ let rec derive_reader fields ptype =
     let rec mk_variant_cases constrs =
       match constrs with
       | (name, args, attrs) :: rest ->
+        let field = try  Some (List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields)
+                    with Not_found -> None in
         let pkey  = [%pat? Some [%p Pat.constant (Const_int64
                               (Int64.of_int (pb_key_of_attrs attrs)))]] in
-        let pargs = with_args |> List.map (fun name' ->
-                      if name = name' then [%pat? Some arg] else [%pat? None]) in
+        let pargs =
+          with_args |> List.map (fun name' ->
+            let field' = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name') fields in
+            match field'.pbf_kind with
+            | Pbk_required -> if name = name' then [%pat? Some arg] else [%pat? None]
+            | Pbk_optional -> if name = name' then [%pat? arg] else [%pat? None]
+            | Pbk_repeated -> if name = name' then [%pat? arg] else [%pat? []])
+        in
         begin match args with
         | [] ->
-          Exp.case (ptuple (pkey :: List.map (fun _ -> [%pat? None]) with_args))
+          Exp.case (ptuple (pkey :: pargs))
                    (mk_constr name [])
         | [arg] ->
-          Exp.case (ptuple (pkey :: pargs))
-                   (mk_constr name [[%expr arg]])
+          begin match field, arg with
+          | Some { pbf_kind = (Pbk_required | Pbk_optional) }, _ ->
+            Exp.case (ptuple (pkey :: pargs))
+                     (mk_constr name [[%expr arg]])
+          | Some { pbf_kind = Pbk_repeated }, [%type: [%t? _] list] ->
+            Exp.case (ptuple (pkey :: pargs))
+                     (mk_constr name [[%expr List.rev arg]])
+          | Some { pbf_kind = Pbk_repeated }, [%type: [%t? _] array] ->
+            Exp.case (ptuple (pkey :: pargs))
+                     (mk_constr name [[%expr Array.of_list (List.rev arg)]])
+          | _ -> assert false
+          end
         | args' -> (* Annoying constructor corner case *)
           let pargs', eargs' =
             List.mapi (fun i _ ->
@@ -824,21 +842,22 @@ let rec derive_writer fields ptype =
         mk_variant_cases rest
       | (name, [arg], attrs) :: rest ->
         let ekey  = Exp.constant (Const_int64 (Int64.of_int (pb_key_of_attrs attrs))) in
+        let field = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields in
         (Exp.case (mk_patt name [pvar ("constr_" ^ name)])
-                  [%expr
-                    Protobuf.Encoder.varint [%e ekey] encoder;
-                    [%e mk_writer (List.find (fun { pbf_name } ->
-                          pbf_name = "constr_"  ^ name) fields)]]) ::
+                  (deconstruct_ptyp field.pbf_name arg
+                    [%expr
+                      Protobuf.Encoder.varint [%e ekey] encoder;
+                      [%e mk_writer field]])) ::
         mk_variant_cases rest
       | (name, args, attrs) :: rest ->
         let ekey  = Exp.constant (Const_int64 (Int64.of_int (pb_key_of_attrs attrs))) in
+        let field = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields in
         let argns = List.mapi (fun i _ -> "a" ^ (string_of_int i)) args in
         (Exp.case (mk_patt name (List.map pvar argns))
                   [%expr
                     Protobuf.Encoder.varint [%e ekey] encoder;
                     let [%p pvar ("constr_" ^ name)] = [%e tuple (List.map evar argns)] in
-                    [%e mk_writer (List.find (fun { pbf_name } ->
-                          pbf_name = "constr_"  ^ name) fields)]]) ::
+                    [%e mk_writer field]]) ::
         mk_variant_cases rest
       | [] -> []
     in
