@@ -165,8 +165,12 @@ let mangle_lid ?(suffix="") lid =
 let module_name () =
   String.capitalize (Filename.(basename (chop_suffix !Location.input_name ".ml")))
 
+let find_attr name attrs =
+  let prefixed_name = "protobuf." ^ name in
+  List.find (fun ({ txt }, _) -> txt = name || txt = prefixed_name) attrs
+
 let pb_key_of_attrs attrs =
-  match List.find (fun ({ txt }, _) -> txt = "key") attrs with
+  match find_attr "key" attrs with
   | { loc }, PStr [{ pstr_desc = Pstr_eval ({
                         pexp_desc = Pexp_constant (Const_int key) }, _) }] ->
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
@@ -175,7 +179,7 @@ let pb_key_of_attrs attrs =
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Key))
 
 let pb_encoding_of_attrs attrs =
-  match List.find (fun ({ txt }, _) -> txt = "encoding") attrs with
+  match find_attr "encoding" attrs with
   | _, PStr [{ pstr_desc = Pstr_eval ({
                 pexp_desc = Pexp_ident { txt = Lident kind; loc } }, _) }] ->
     begin try
@@ -186,23 +190,24 @@ let pb_encoding_of_attrs attrs =
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Encoding))
 
 let bare_of_attrs attrs =
-  match List.find (fun ({ txt }, _) -> txt = "bare") attrs with
+  match find_attr "bare" attrs with
   | _, PStr [] -> ()
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Bare))
 
 let default_of_attrs attrs =
-  match List.find (fun ({ txt }, _) -> txt = "default") attrs with
+  match find_attr "default" attrs with
   | _, PStr [{ pstr_desc = Pstr_eval (expr, _) }] -> expr
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Default))
 
 let packed_of_attrs attrs =
-  match List.find (fun ({ txt }, _) -> txt = "packed") attrs with
+  match find_attr "packed" attrs with
   | _, PStr [] -> ()
   | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Packed))
 
 let all_attrs = ["key"; "encoding"; "bare"; "default"; "packed"]
 let check_attrs allow attrs =
   let forbid = List.filter (fun attr -> not (List.exists ((=) attr) allow)) all_attrs in
+  let forbid = forbid @ List.map (fun attr -> "protobuf." ^ attr) forbid in
   forbid |> List.iter (fun attr ->
     try  let attr = List.find (fun ({ txt }, _) -> txt = attr) attrs in
          raise (Pberr_wrong_attr attr)
