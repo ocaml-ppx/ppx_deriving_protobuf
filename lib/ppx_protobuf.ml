@@ -41,17 +41,20 @@ and pb_field = {
   pbf_loc     : Location.t;
 }
 
-exception Pberr_attr_syntax   of Location.t * [ `Key | `Encoding | `Bare | `Default | `Packed ]
-exception Pberr_wrong_attr    of attribute
-exception Pberr_no_key        of Location.t
-exception Pberr_key_invalid   of Location.t * int
-exception Pberr_key_duplicate of int * Location.t * Location.t
-exception Pberr_abstract      of type_declaration
-exception Pberr_open          of type_declaration
-exception Pberr_wrong_ty      of core_type
-exception Pberr_wrong_tparm   of core_type
-exception Pberr_no_conversion of Location.t * pb_type * pb_encoding
-exception Pberr_packed_bytes  of Location.t
+type error =
+| Pberr_attr_syntax   of Location.t * [ `Key | `Encoding | `Bare | `Default | `Packed ]
+| Pberr_wrong_attr    of attribute
+| Pberr_no_key        of Location.t
+| Pberr_key_invalid   of Location.t * int
+| Pberr_key_duplicate of int * Location.t * Location.t
+| Pberr_abstract      of type_declaration
+| Pberr_open          of type_declaration
+| Pberr_wrong_ty      of core_type
+| Pberr_wrong_tparm   of core_type
+| Pberr_no_conversion of Location.t * pb_type * pb_encoding
+| Pberr_packed_bytes  of Location.t
+
+exception Error of error
 
 let with_formatter f =
   let buf = Buffer.create 16 in
@@ -115,45 +118,49 @@ let string_payload_kind_of_pb_encoding enc =
   | Pbe_bits32 -> "Bits32"
   | Pbe_bits64 -> "Bits64"
 
+let describe_error error =
+  match error with
+  | Pberr_attr_syntax (loc, attr) ->
+    let name, expectation =
+      match attr with
+      | `Key      -> "key", "a number, e.g. [@key 1]"
+      | `Encoding -> "encoding", "one of: bool, varint, zigzag, bits32, bits64, " ^
+                                 "bytes, e.g. [@encoding varint]"
+      | `Bare     -> "bare", "[@bare]"
+      | `Default  -> "default", "an expression, e.g. [@default \"foo\"]"
+      | `Packed   -> "packed", "[@packed]"
+    in
+    errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation
+  | Pberr_wrong_attr ({ txt; loc }, _) ->
+    errorf ~loc "Attribute @%s is not recognized here" txt
+  | Pberr_no_key loc ->
+    errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]"
+  | Pberr_key_invalid (loc, key) ->
+    if key >= 19000 && key <= 19999 then
+      errorf ~loc "Key %d is in reserved range [19000:19999]" key
+    else
+      errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key
+  | Pberr_key_duplicate (key, loc1, loc2) ->
+    errorf ~loc:loc1 "Key %d is already used" key
+                 ~sub:[errorf ~loc:loc2 "Initially defined here"]
+  | Pberr_abstract { ptype_loc = loc } ->
+    errorf ~loc "Abstract types are not supported"
+  | Pberr_open { ptype_loc = loc } ->
+    errorf ~loc "Open types are not supported"
+  | Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp) ->
+    errorf ~loc "Type %s does not have a Protobuf mapping" (string_of_core_type ptyp)
+  | Pberr_wrong_tparm ({ ptyp_loc = loc } as ptyp) ->
+    errorf ~loc "Type %s cannot be used as a type parameter" (string_of_core_type ptyp)
+  | Pberr_no_conversion (loc, kind, enc) ->
+    errorf ~loc "\"%s\" is not a valid representation for %s"
+                      (string_of_pb_encoding enc) (string_of_pb_type kind)
+  | Pberr_packed_bytes loc ->
+    errorf ~loc "Only fields with varint, bits32 or bits64 encoding may be packed"
+
 let () =
   Location.register_error_of_exn (fun exn ->
     match exn with
-    | Pberr_attr_syntax (loc, attr) ->
-      let name, expectation =
-        match attr with
-        | `Key      -> "key", "a number, e.g. [@key 1]"
-        | `Encoding -> "encoding", "one of: bool, varint, zigzag, bits32, bits64, " ^
-                                   "bytes, e.g. [@encoding varint]"
-        | `Bare     -> "bare", "[@bare]"
-        | `Default  -> "default", "an expression, e.g. [@default \"foo\"]"
-        | `Packed   -> "packed", "[@packed]"
-      in
-      Some (errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation)
-    | Pberr_wrong_attr ({ txt; loc }, _) ->
-      Some (errorf ~loc "Attribute @%s is not recognized here" txt)
-    | Pberr_no_key loc ->
-      Some (errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]")
-    | Pberr_key_invalid (loc, key) ->
-      if key >= 19000 && key <= 19999 then
-        Some (errorf ~loc "Key %d is in reserved range [19000:19999]" key)
-      else
-        Some (errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key)
-    | Pberr_key_duplicate (key, loc1, loc2) ->
-      Some (errorf ~loc:loc1 "Key %d is already used" key
-                   ~sub:[errorf ~loc:loc2 "Initially defined here"])
-    | Pberr_abstract { ptype_loc = loc } ->
-      Some (errorf ~loc "Abstract types are not supported")
-    | Pberr_open { ptype_loc = loc } ->
-      Some (errorf ~loc "Open types are not supported")
-    | Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp) ->
-      Some (errorf ~loc "Type %s does not have a Protobuf mapping" (string_of_core_type ptyp))
-    | Pberr_wrong_tparm ({ ptyp_loc = loc } as ptyp) ->
-      Some (errorf ~loc "Type %s cannot be used as a type parameter" (string_of_core_type ptyp))
-    | Pberr_no_conversion (loc, kind, enc) ->
-      Some (errorf ~loc "\"%s\" is not a valid representation for %s"
-                        (string_of_pb_encoding enc) (string_of_pb_type kind))
-    | Pberr_packed_bytes loc ->
-      Some (errorf ~loc "Only fields with varint, bits32 or bits64 encoding may be packed")
+    | Error err -> Some (describe_error err)
     | _ -> None)
 
 let mangle_lid ?(suffix="") lid =
@@ -176,9 +183,9 @@ let pb_key_of_attrs attrs =
   | { loc }, PStr [{ pstr_desc = Pstr_eval ({
                         pexp_desc = Pexp_constant (Const_int key) }, _) }] ->
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
-      raise (Pberr_key_invalid (loc, key));
+      raise (Error (Pberr_key_invalid (loc, key)));
     key
-  | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Key))
+  | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Key)))
 
 let pb_encoding_of_attrs attrs =
   match find_attr "encoding" attrs with
@@ -187,24 +194,24 @@ let pb_encoding_of_attrs attrs =
     begin try
       pb_encoding_of_string kind
     with Not_found ->
-      raise (Pberr_attr_syntax (loc, `Encoding))
+      raise (Error (Pberr_attr_syntax (loc, `Encoding)))
     end
-  | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Encoding))
+  | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Encoding)))
 
 let bare_of_attrs attrs =
   match find_attr "bare" attrs with
   | _, PStr [] -> ()
-  | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Bare))
+  | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Bare)))
 
 let default_of_attrs attrs =
   match find_attr "default" attrs with
   | _, PStr [{ pstr_desc = Pstr_eval (expr, _) }] -> expr
-  | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Default))
+  | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Default)))
 
 let packed_of_attrs attrs =
   match find_attr "packed" attrs with
   | _, PStr [] -> ()
-  | { loc }, _ -> raise (Pberr_attr_syntax (loc, `Packed))
+  | { loc }, _ -> raise (Error (Pberr_attr_syntax (loc, `Packed)))
 
 let all_attrs = ["key"; "encoding"; "bare"; "default"; "packed"]
 let check_attrs allow attrs =
@@ -212,7 +219,7 @@ let check_attrs allow attrs =
   let forbid = forbid @ List.map (fun attr -> "protobuf." ^ attr) forbid in
   forbid |> List.iter (fun attr ->
     try  let attr = List.find (fun ({ txt }, _) -> txt = attr) attrs in
-         raise (Pberr_wrong_attr attr)
+         raise (Error (Pberr_wrong_attr attr))
     with Not_found -> ())
 
 let fields_of_ptype base_path ptype =
@@ -222,7 +229,7 @@ let fields_of_ptype base_path ptype =
       check_attrs ["key"; "encoding"] ptyp.ptyp_attributes;
       begin match pbf_kind with
       | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_optional arg
-      | _ -> raise (Pberr_wrong_ty ptyp)
+      | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
     | [%type: [%t? arg] array] | [%type: [%t? arg] list] ->
       check_attrs ["key"; "encoding"; "packed"] ptyp.ptyp_attributes;
@@ -234,9 +241,9 @@ let fields_of_ptype base_path ptype =
           with Not_found -> pbf_enc
         in
         if pbf_enc = Pbe_packed Pbe_bytes then
-          raise (Pberr_packed_bytes ptyp.ptyp_loc);
+          raise (Error (Pberr_packed_bytes ptyp.ptyp_loc));
         { field with pbf_enc }
-      | _ -> raise (Pberr_wrong_ty ptyp)
+      | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
     | { ptyp_desc = (Ptyp_tuple _ | Ptyp_variant _ | Ptyp_var _) as desc;
         ptyp_attributes = attrs; ptyp_loc; } ->
@@ -250,7 +257,7 @@ let fields_of_ptype base_path ptype =
         with Not_found ->
           match pbf_key with
           | Some k -> k
-          | None -> raise (Pberr_no_key ptyp_loc)
+          | None -> raise (Error (Pberr_no_key ptyp_loc))
       in
       let pbf_enc, pbf_type =
         match desc with
@@ -288,7 +295,7 @@ let fields_of_ptype base_path ptype =
         with Not_found ->
           match pbf_key with
           | Some k -> k
-          | None -> raise (Pberr_no_key ptyp_loc)
+          | None -> raise (Error (Pberr_no_key ptyp_loc))
       in
       let pbf_enc =
         try  pb_encoding_of_attrs attrs
@@ -317,24 +324,24 @@ let fields_of_ptype base_path ptype =
           pbf_loc     = ptyp_loc;
           pbf_default = try Some (default_of_attrs attrs) with Not_found -> None }
       | _ ->
-        raise (Pberr_no_conversion (ptyp_loc, pbf_type, pbf_enc))
+        raise (Error (Pberr_no_conversion (ptyp_loc, pbf_type, pbf_enc)))
       end
     | { ptyp_desc = Ptyp_alias (ptyp', _) } ->
       field_of_ptyp pbf_name pbf_path pbf_key pbf_kind ptyp'
-    | ptyp -> raise (Pberr_wrong_ty ptyp)
+    | ptyp -> raise (Error (Pberr_wrong_ty ptyp))
   in
   let fields_of_variant loc constrs =
     let constrs' =
       constrs |> List.map (fun ((name, args, attrs, loc) as pcd) ->
         let key =
           try  pb_key_of_attrs attrs
-          with Not_found -> raise (Pberr_no_key loc)
+          with Not_found -> raise (Error (Pberr_no_key loc))
         in key, pcd)
     in
     constrs' |> List.iter (fun (key, (_, _, _, loc) as pcd) ->
       constrs' |> List.iter (fun (key', (_, _, _, loc') as pcd') ->
         if pcd != pcd' && key = key' then
-          raise (Pberr_key_duplicate (key, loc', loc))));
+          raise (Error (Pberr_key_duplicate (key, loc', loc)))));
     { pbf_name    = "variant";
       pbf_path    = base_path;
       pbf_key     = 1;
@@ -370,13 +377,13 @@ let fields_of_ptype base_path ptype =
         match row_field with
         | Rtag (name, attrs, _, [])  -> (name, [], attrs, ptyp_loc)
         | Rtag (name, attrs, _, [a]) -> (name, [a], attrs, ptyp_loc)
-        | _ -> raise (Pberr_wrong_ty ptyp)) |> fields_of_variant ptype_loc
+        | _ -> raise (Error (Pberr_wrong_ty ptyp))) |> fields_of_variant ptype_loc
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
       [field_of_ptyp "alias" base_path (Some 1) Pbk_required ptyp]
     | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
-      raise (Pberr_abstract ptype)
+      raise (Error (Pberr_abstract ptype))
     | { ptype_kind = Ptype_open } ->
-      raise (Pberr_open ptype)
+      raise (Error (Pberr_open ptype))
     | { ptype_kind = Ptype_record fields } ->
       fields |> List.mapi (fun i { pld_name = { txt = name }; pld_type; pld_attributes; } ->
         check_attrs [] pld_attributes;
@@ -389,7 +396,7 @@ let fields_of_ptype base_path ptype =
   fields |> List.iter (fun field ->
     fields |> List.iter (fun field' ->
       if field != field' && field.pbf_key = field'.pbf_key then
-        raise (Pberr_key_duplicate (field.pbf_key, field'.pbf_loc, field.pbf_loc))));
+        raise (Error (Pberr_key_duplicate (field.pbf_key, field'.pbf_loc, field.pbf_loc)))));
   fields |> List.sort (fun { pbf_key = a } { pbf_key = b } -> compare a b)
 
 let rec mk_poly tvars k =
@@ -501,7 +508,7 @@ let rec derive_reader fields ptype =
       let args' = args |> List.map (fun ptyp ->
         match ptyp with
         | { ptyp_desc = Ptyp_var tvar } -> evar ("poly_" ^ tvar)
-        | _ -> raise (Pberr_wrong_tparm ptyp))
+        | _ -> raise (Error (Pberr_wrong_tparm ptyp)))
       in
       app ident (args' @ [[%expr Protobuf.Decoder.nested decoder]])
     | Pbt_nested ([], lid), Pbe_varint -> (* bare enum *)
@@ -747,7 +754,7 @@ let rec derive_writer fields ptype =
       let args' = args |> List.map (fun ptyp ->
         match ptyp with
         | { ptyp_desc = Ptyp_var tvar } -> evar ("poly_" ^ tvar)
-        | _ -> raise (Pberr_wrong_tparm ptyp))
+        | _ -> raise (Error (Pberr_wrong_tparm ptyp)))
       in
       [%expr Protobuf.Encoder.nested [%e app ident (args' @ [evar pbf_name])] encoder]
     | Pbt_nested ([], lid), Pbe_varint -> (* bare enum *)
