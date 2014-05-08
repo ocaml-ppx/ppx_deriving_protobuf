@@ -5,6 +5,7 @@ Changelog
 -----
 
   * Update for OCaml 4.02.
+  * Add support for `String.t`, `Bytes.t` and `bytes`.
   * Fix a bug that prevented using repeated and optional fields as
     constructor arguments.
   * Accept namespaced attributes, e.g. [@protobuf.key].
