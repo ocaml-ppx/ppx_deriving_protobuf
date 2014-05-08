@@ -24,6 +24,9 @@ module Decoder : sig
   (** Type of wire format decoders. *)
   type t
 
+  (** [of_bytes b] creates a decoder positioned at start of bytes [b]. *)
+  val of_bytes  : bytes -> t
+
   (** [of_string s] creates a decoder positioned at start of string [s]. *)
   val of_string : string -> t
 
@@ -55,7 +58,7 @@ module Decoder : sig
   (** [bytes d] reads a varint indicating length and then that much
       bytes from [d].
       If [d] has exhausted its input, raises [Failure Incomplete]. *)
-  val bytes     : t -> string
+  val bytes     : t -> bytes
 
   (** [nested d] returns a decoder for a message nested in [d].
       If reading the message would exhaust input of [d], raises
@@ -123,7 +126,7 @@ module Encoder : sig
 
   (** [bytes b e] writes a varint indicating length of [b] and then
       [b] to [e]. *)
-  val bytes     : string -> t -> unit
+  val bytes     : bytes -> t -> unit
 
   (** [nested f e] applies [f] to an encoder for a message nested in [e]. *)
   val nested    : (t -> unit) -> t -> unit

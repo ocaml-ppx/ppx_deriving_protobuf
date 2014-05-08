@@ -18,11 +18,11 @@ Executable ppx_protobuf
   BuildDepends:   compiler-libs.common, ppx_tools, extlib
   MainIs:         ppx_protobuf.ml
   CompiledObject: best
-  ByteOpt:        -ppx 'ocamlfind ppx_tools/ppx_metaquot'
-  NativeOpt:      -ppx 'ocamlfind ppx_tools/ppx_metaquot'
+  ByteOpt:        -safe-string -ppx 'ocamlfind ppx_tools/ppx_metaquot'
+  NativeOpt:      -safe-string -ppx 'ocamlfind ppx_tools/ppx_metaquot'
 
 Test test_ppx_protobuf
   Command:        ocamlbuild -I lib -package uint -package oUnit  \
-                             -cflags '-ppx $ppx_protobuf' \
+                             -cflags '-safe-string -ppx $ppx_protobuf' \
                              lib_test/test_ppx_protobuf.byte --
   TestTools:      ppx_protobuf

@@ -64,13 +64,20 @@ module Decoder = struct
     else raise (Failure (Overflow fld))
 
   type t = {
-            source : string;
+            source : bytes;
             limit  : int;
     mutable offset : int;
   }
 
+  let of_bytes source =
+    { source;
+      offset = 0;
+      limit  = Bytes.length source; }
+
   let of_string source =
-    { source; offset = 0; limit = String.length source; }
+    { source = Bytes.of_string source;
+      offset = 0;
+      limit  = String.length source; }
 
   let at_end d =
     d.limit = d.offset
@@ -78,7 +85,7 @@ module Decoder = struct
   let byte d =
     if d.offset >= d.limit then
       raise (Failure Incomplete);
-    let byte = int_of_char d.source.[d.offset] in
+    let byte = int_of_char (Bytes.get d.source d.offset) in
     d.offset <- d.offset + 1;
     byte
 
@@ -131,7 +138,7 @@ module Decoder = struct
     let len = Int64.to_int (varint d) in
     if d.offset + len > d.limit then
       raise (Failure Incomplete);
-    let str = String.sub d.source d.offset len in
+    let str = Bytes.sub d.source d.offset len in
     d.offset <- d.offset + len;
     str
 
@@ -234,8 +241,8 @@ module Encoder = struct
     Buffer.add_char e (char_of_int Int64.(to_int (logand 0xffL (shift_right i 56))))
 
   let bytes b e =
-    smallint (String.length b) e;
-    Buffer.add_string e b
+    smallint (Bytes.length b) e;
+    Buffer.add_bytes e b
 
   let nested f e =
     let e' = Buffer.create 16 in

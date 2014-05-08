@@ -96,6 +96,11 @@ let test_string ctxt =
   assert_roundtrip (fun x -> x) s_to_protobuf s_from_protobuf
                    "\x0a\x03abc" "abc"
 
+type by = bytes [@@protobuf]
+let test_string ctxt =
+  assert_roundtrip (fun x -> Bytes.to_string x) by_to_protobuf by_from_protobuf
+                   "\x0a\x03abc" (Bytes.of_string "abc")
+
 type o = int option [@@protobuf]
 let test_option ctxt =
   let printer x = match x with None -> "None" | Some v -> "Some " ^ (string_of_int v) in

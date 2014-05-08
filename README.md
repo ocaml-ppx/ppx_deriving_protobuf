@@ -64,10 +64,10 @@ val t_from_protobuf : Protobuf.Decoder.t -> t
 val t_to_protobuf   : Protobuf.Encoder.t -> t -> unit
 ```
 
-In order to deserialize a value of type `t` from string `message`, use:
+In order to deserialize a value of type `t` from bytes `message`, use:
 
 ``` ocaml
-let decoder = Protobuf.Decoder.of_string message in
+let decoder = Protobuf.Decoder.of_bytes message in
 let result  = t_from_protobuf decoder in
 ...
 ```
@@ -218,9 +218,14 @@ type booleans = {
 } [@@protobuf]
 ```
 
-### Strings
+### Strings and bytes
 
-`string` maps to _protoc_'s `string` or `bytes` and is encoded on wire using `bytes`:
+All of `string`, `String.t`, `bytes` and `Bytes.t` map to _protoc_'s `string` or
+`bytes` and are encoded on wire using `bytes`:
+
+Note that unlike _protoc_, which has an additional invariant that the contents of
+a `string` must be valid UTF-8 text, _ppx_protobuf_ does not have this invariant.
+However, you still should observe it in your programs.
 
 ``` protoc
 message Strings {
@@ -232,7 +237,7 @@ message Strings {
 ``` ocaml
 type strings = {
   bar : string [@key 1];
-  baz : string [@key 2];
+  baz : bytes  [@key 2];
 } [@@protobuf]
 ```
 
@@ -452,7 +457,7 @@ An example usage would be:
 type a = int [@@protobuf]
 
 let get_ints message =
-  let decoder = Protobuf.Decoder.of_string message in
+  let decoder = Protobuf.Decoder.of_bytes message in
   mylist_from_protobuf a_from_protobuf decoder
 ```
 

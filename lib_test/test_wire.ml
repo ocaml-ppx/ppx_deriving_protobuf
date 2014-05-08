@@ -11,7 +11,8 @@ let test_decoder ctxt =
   let d = Decoder.of_string "\x01\x02\x03\x04\x05\x06\x07\x08" in
   assert_equal ~printer:Int64.to_string 0x0807060504030201L (Decoder.bits64 d);
   let d = Decoder.of_string "\x03abc" in
-  assert_equal ~printer:(fun x -> x) "abc" (Decoder.bytes d);
+  assert_equal ~printer:(fun x -> Bytes.to_string x)
+               (Bytes.of_string "abc") (Decoder.bytes d);
   assert_raises Decoder.(Failure Incomplete) (fun () -> Decoder.varint d);
   let d  = Decoder.of_string "\x02\xac\x02" in
   let d' = Decoder.nested d in
@@ -58,7 +59,7 @@ let test_encoder ctxt =
   Encoder.bits64 0x0807060504030201L e;
   assert_equal ~printer "\x01\x02\x03\x04\x05\x06\x07\x08" (Encoder.to_string e);
   let e = Encoder.create () in
-  Encoder.bytes "abc" e;
+  Encoder.bytes (Bytes.of_string "abc") e;
   assert_equal ~printer "\x03abc" (Encoder.to_string e);
   let e = Encoder.create () in
   Encoder.nested (Encoder.varint 300L) e;

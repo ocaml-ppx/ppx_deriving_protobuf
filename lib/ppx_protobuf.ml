@@ -22,6 +22,7 @@ and pb_type =
 | Pbt_uint64
 | Pbt_float
 | Pbt_string
+| Pbt_bytes
 | Pbt_imm     of core_type
 | Pbt_variant of (int * string) list
 | Pbt_nested  of core_type list * Longident.t
@@ -99,6 +100,7 @@ let rec string_of_pb_type kind =
   | Pbt_uint64 -> "Uint64.t"
   | Pbt_float  -> "float"
   | Pbt_string -> "string"
+  | Pbt_bytes  -> "bytes"
   | Pbt_imm ptyp ->
     string_of_core_type ptyp
   | Pbt_variant constrs ->
@@ -279,7 +281,8 @@ let fields_of_ptype base_path ptype =
         | [], Lident "bool"   -> Pbt_bool
         | [], Lident "int"    -> Pbt_int
         | [], Lident "float"  -> Pbt_float
-        | [], Lident "string" -> Pbt_string
+        | [], (Lident "string" | Ldot (Lident "String", "t")) -> Pbt_string
+        | [], (Lident "bytes"  | Ldot (Lident "Bytes", "t"))  -> Pbt_bytes
         | [], (Lident "int32"  | Ldot (Lident "Int32", "t"))  -> Pbt_int32
         | [], (Lident "int64"  | Ldot (Lident "Int64", "t"))  -> Pbt_int64
         | [], (Lident "uint32" | Ldot (Lident "Uint32", "t")) -> Pbt_uint32
@@ -305,7 +308,8 @@ let fields_of_ptype base_path ptype =
           | Pbt_bool   | Pbt_int     -> Pbe_varint
           | Pbt_int32  | Pbt_uint32  -> Pbe_bits32
           | Pbt_int64  | Pbt_uint64  -> Pbe_bits64
-          | Pbt_string | Pbt_imm _   | Pbt_poly _ -> Pbe_bytes
+          | Pbt_string | Pbt_bytes
+          | Pbt_imm _  | Pbt_poly _  -> Pbe_bytes
           | Pbt_nested _ ->
             begin
               try  bare_of_attrs attrs; Pbe_varint
@@ -318,7 +322,7 @@ let fields_of_ptype base_path ptype =
       | (Pbt_int | Pbt_int32 | Pbt_int64 | Pbt_uint32 | Pbt_uint64),
         (Pbe_varint | Pbe_zigzag | Pbe_bits32 | Pbe_bits64)
       | Pbt_float, (Pbe_bits32 | Pbe_bits64)
-      | Pbt_string, Pbe_bytes
+      | (Pbt_string | Pbt_bytes), Pbe_bytes
       | Pbt_nested _, (Pbe_bytes | Pbe_varint) ->
         { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind; pbf_path;
           pbf_loc     = ptyp_loc;
@@ -499,7 +503,9 @@ let rec derive_reader fields ptype =
     | Pbt_float, Pbe_bits64 ->
       [%expr Int64.float_of_bits [%e value]]
     (* string *)
-    | Pbt_string, Pbe_bytes -> value
+    | Pbt_string, Pbe_bytes -> [%expr Bytes.to_string [%e value]]
+    (* bytes *)
+    | Pbt_bytes, Pbe_bytes -> value
     (* variant *)
     | Pbt_variant _, Pbe_varint -> value
     (* nested *)
@@ -763,7 +769,9 @@ let rec derive_writer fields ptype =
     | Pbt_float, Pbe_bits64 ->
       encode [%expr Int64.bits_of_float [%e evar pbf_name]]
     (* string *)
-    | Pbt_string, Pbe_bytes -> encode (evar pbf_name)
+    | Pbt_string, Pbe_bytes -> encode [%expr Bytes.of_string [%e evar pbf_name]]
+    (* bytes *)
+    | Pbt_bytes, Pbe_bytes -> encode (evar pbf_name)
     (* variant *)
     | Pbt_variant _, Pbe_varint -> encode (evar pbf_name)
     (* nested *)
