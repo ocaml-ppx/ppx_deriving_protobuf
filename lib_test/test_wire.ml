@@ -2,7 +2,7 @@ open OUnit2
 open Protobuf
 
 let test_decoder ctxt =
-  let d = Decoder.of_string "\x01" in
+  let d = Decoder.of_bytes (Bytes.of_string "\x01") in
   assert_equal ~printer:Int64.to_string 1L (Decoder.varint d);
   let d = Decoder.of_string "\xac\x02" in
   assert_equal ~printer:Int64.to_string 300L (Decoder.varint d);
@@ -48,7 +48,7 @@ let test_encoder ctxt =
   let printer s = Printf.sprintf "%S" s in
   let e = Encoder.create () in
   Encoder.varint 1L e;
-  assert_equal ~printer "\x01" (Encoder.to_string e);
+  assert_equal ~printer "\x01" (Bytes.to_string (Encoder.to_bytes e));
   let e = Encoder.create () in
   Encoder.varint 300L e;
   assert_equal ~printer "\xac\x02" (Encoder.to_string e);

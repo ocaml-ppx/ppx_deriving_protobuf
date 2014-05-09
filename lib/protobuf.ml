@@ -204,8 +204,9 @@ module Encoder = struct
   let create () =
     Buffer.create 16
 
-  let to_string e =
-    Buffer.contents e
+  let to_string = Buffer.contents
+
+  let to_bytes = Buffer.to_bytes
 
   let varint i e =
     let rec write i =

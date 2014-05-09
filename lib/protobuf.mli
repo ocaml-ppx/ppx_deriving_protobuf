@@ -112,6 +112,9 @@ module Encoder : sig
   (** [to_string e] converts the message assembled in [e] to a string. *)
   val to_string : t -> string
 
+  (** [to_bytes e] converts the message assembled in [e] to bytes. *)
+  val to_bytes  : t -> bytes
+
   (** [varint i e] writes a varint [i] to [e]. *)
   val varint    : int64 -> t -> unit
 
