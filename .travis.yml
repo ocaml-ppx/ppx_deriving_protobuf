@@ -1,0 +1,15 @@
+language: c
+env:
+  - OPAM_PACKAGES="ppx_tools camlp4 oasis extlib"
+script:
+  - echo "yes" | sudo add-apt-repository ppa:avsm/ppa-opam-experimental
+  - sudo apt-get update -qq
+  - sudo apt-get install -qq ocaml opam
+  - export OPAMYES=1
+  - opam init
+  - eval `opam config -env`
+  - opam pin ppx_tools git://github.com/alainfrisch/ppx_tools
+  - opam pin ocamlfind git://github.com/whitequark/ocaml-findlib#4.01-bytes-fix
+  - opam install -q -y ${OPAM_PACKAGES}
+  - ./configure --enable-tests
+  - make test
