@@ -61,7 +61,7 @@ _ppx_protobuf_ generates two functions per type:
 ``` ocaml
 type t = ... [@@protobuf]
 val t_from_protobuf : Protobuf.Decoder.t -> t
-val t_to_protobuf   : Protobuf.Encoder.t -> t -> unit
+val t_to_protobuf   : t -> Protobuf.Encoder.t -> unit
 ```
 
 In order to deserialize a value of type `t` from bytes `message`, use:

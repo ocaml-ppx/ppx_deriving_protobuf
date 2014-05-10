@@ -72,6 +72,12 @@ module Decoder : sig
       If the payload kind is unknown, raises [Failure Malformed_field]. *)
   val key       : t -> (int * payload_kind) option
 
+  (** [decode_string f s] ≡ [f (create s)]. *)
+  val decode_string   : (t -> 'a) -> string -> 'a
+
+  (** [decode_bytes f b] ≡ [f (create b)]. *)
+  val decode_bytes    : (t -> 'a) -> bytes -> 'a
+
   (** [int_of_int32 fld v] returns [v] truncated to [int].
       If the value doesn't fit in the range of [int], raises
       [Failure (Overflow fld)]. *)
@@ -136,6 +142,12 @@ module Encoder : sig
 
   (** [key (k, pk) e] writes a key and a payload kind to [e]. *)
   val key       : (int * payload_kind) -> t -> unit
+
+  (** [encode_string f x] ≡ [let e = create () in f x e; to_string f]. *)
+  val encode_string   : ('a -> t -> unit) -> 'a -> string
+
+  (** [encode_bytes f x] ≡ [let e = create () in f x e; to_bytes f]. *)
+  val encode_bytes    : ('a -> t -> unit) -> 'a -> bytes
 
   (** [int32_of_int fld v] returns [v] truncated to [int32].
       If the value doesn't fit in the range of [int32], raises
