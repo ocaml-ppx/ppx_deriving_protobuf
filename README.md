@@ -67,17 +67,14 @@ val t_to_protobuf   : t -> Protobuf.Encoder.t -> unit
 In order to deserialize a value of type `t` from bytes `message`, use:
 
 ``` ocaml
-let decoder = Protobuf.Decoder.of_bytes message in
-let result  = t_from_protobuf decoder in
+let output = Protobuf.Decoder.decode_bytes t_from_protobuf message in
 ...
 ```
 
 In order to serialize a value `input` of type `t`, use:
 
 ``` ocaml
-let encoder = Protobuf.Encoder.create () in
-t_to_protobuf encoder input;
-let message = Protobuf.Encoder.to_string encoder in
+let message = Protobuf.Encoder.encode_bytes t_to_protobuf input in
 ...
 ```
 
@@ -606,6 +603,12 @@ a common error without this countermeasure.
 Everything else should be entirely compatible with _protoc_.
 
 [optional]: https://developers.google.com/protocol-buffers/docs/encoding#optional
+
+API Documentation
+-----------------
+
+The documentation for internal API is available at
+[GitHub pages](http://whitequark.github.io/ocaml-ppx_protobuf/).
 
 License
 -------

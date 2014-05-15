@@ -1,3 +1,5 @@
+(** Low-level Protobuf codec *)
+
 (** Type of wire format payload kinds. *)
 type payload_kind =
 | Varint
