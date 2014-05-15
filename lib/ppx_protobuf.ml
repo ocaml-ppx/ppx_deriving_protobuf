@@ -510,13 +510,15 @@ let rec derive_reader fields ptype =
     | Pbt_variant _, Pbe_varint -> value
     (* nested *)
     | Pbt_nested (args, lid), Pbe_bytes ->
-      let ident = Exp.ident (mkloc (mangle_lid ~suffix:"_from_protobuf" lid) !default_loc) in
-      let args' = args |> List.map (fun ptyp ->
+      let reader lid = Exp.ident (mkloc (mangle_lid ~suffix:"_from_protobuf" lid) !default_loc) in
+      let rec expr_of_core_type ptyp =
         match ptyp with
         | { ptyp_desc = Ptyp_var tvar } -> evar ("poly_" ^ tvar)
-        | _ -> raise (Error (Pberr_wrong_tparm ptyp)))
+        | { ptyp_desc = Ptyp_constr({ txt = lid }, ptyps) } ->
+          app (reader lid) (List.map expr_of_core_type ptyps)
+        | ptyp -> raise (Error (Pberr_wrong_tparm ptyp))
       in
-      app ident (args' @ [[%expr Protobuf.Decoder.nested decoder]])
+      app (reader lid) ((List.map expr_of_core_type args) @ [[%expr Protobuf.Decoder.nested decoder]])
     | Pbt_nested ([], lid), Pbe_varint -> (* bare enum *)
       let ident = Exp.ident (mkloc (mangle_lid ~suffix:"_from_protobuf_bare" lid) !default_loc) in
       [%expr [%e ident] decoder]
@@ -776,13 +778,16 @@ let rec derive_writer fields ptype =
     | Pbt_variant _, Pbe_varint -> encode (evar pbf_name)
     (* nested *)
     | Pbt_nested (args, lid), Pbe_bytes ->
-      let ident = Exp.ident (mkloc (mangle_lid ~suffix:"_to_protobuf" lid) !default_loc) in
-      let args' = args |> List.map (fun ptyp ->
+      let writer lid = Exp.ident (mkloc (mangle_lid ~suffix:"_to_protobuf" lid) !default_loc) in
+      let rec expr_of_core_type ptyp =
         match ptyp with
         | { ptyp_desc = Ptyp_var tvar } -> evar ("poly_" ^ tvar)
-        | _ -> raise (Error (Pberr_wrong_tparm ptyp)))
+        | { ptyp_desc = Ptyp_constr({ txt = lid }, ptyps) } ->
+          app (writer lid) (List.map expr_of_core_type ptyps)
+        | _ -> raise (Error (Pberr_wrong_tparm ptyp))
       in
-      [%expr Protobuf.Encoder.nested [%e app ident (args' @ [evar pbf_name])] encoder]
+      [%expr Protobuf.Encoder.nested
+        [%e app (writer lid) ((List.map expr_of_core_type args) @ [evar pbf_name])] encoder]
     | Pbt_nested ([], lid), Pbe_varint -> (* bare enum *)
       let ident = Exp.ident (mkloc (mangle_lid ~suffix:"_to_protobuf_bare" lid) !default_loc) in
       [%expr ([%e ident] [%e evar pbf_name]) encoder]

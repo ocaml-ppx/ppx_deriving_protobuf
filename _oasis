@@ -24,7 +24,7 @@ Executable "ppx_protobuf"
 Test "test_ppx_protobuf"
   Command:        ocamlbuild -I lib -package uint -package oUnit  \
                              -cflags '-safe-string -ppx $ppx_protobuf' \
-                             lib_test/test_ppx_protobuf.byte --
+                             lib_test/test_ppx_protobuf.byte -- -runner sequential
   TestTools:      ppx_protobuf
 
 AlphaFeatures: ocamlbuild_more_args
