@@ -11,6 +11,7 @@ Changelog
   * Accept namespaced attributes, e.g. [@protobuf.key].
   * Reject attributes likely to be misplaced, e.g. [@key] attached
     to a record field name.
+  * Support passing concrete types as type parameters.
 
 0.9.0
 -----

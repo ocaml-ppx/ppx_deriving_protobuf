@@ -299,6 +299,12 @@ let test_variant_optrep ctxt =
   assert_roundtrip printer v5_to_protobuf v5_from_protobuf
                    "\x08\x03" (V5C [||])
 
+type r9 = i1 r5 [@@protobuf]
+let test_nonpoly ctxt =
+  let printer { r5a } = Printf.sprintf "{ r5a = %d }" r5a in
+  assert_roundtrip printer r9_to_protobuf r9_from_protobuf
+                   "\x0a\x04\x0a\x02\x08\x01" { r5a = 1 }
+
 type d = int [@default 42] [@@protobuf]
 let test_default ctxt =
   assert_roundtrip string_of_int d_to_protobuf d_from_protobuf
@@ -366,6 +372,7 @@ let suite = "Test syntax" >::: [
     "test_pvariant_bare"  >:: test_pvariant_bare;
     "test_imm_pv_bare"    >:: test_imm_pv_bare;
     "test_variant_optrep" >:: test_variant_optrep;
+    "test_nonpoly"        >:: test_nonpoly;
     "test_default"        >:: test_default;
     "test_packed"         >:: test_packed;
     "test_errors"         >:: test_errors;

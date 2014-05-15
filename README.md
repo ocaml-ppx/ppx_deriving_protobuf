@@ -458,6 +458,14 @@ let get_ints message =
   mylist_from_protobuf a_from_protobuf decoder
 ```
 
+It's also possible to specify concrete types as parameters; in this case, _ppx_protobuf_
+will infer the serializer/deserializer functions automatically. For example:
+
+``` ocaml
+(* Combining two samples above *)
+type b = a mylist [@@protobuf]
+```
+
 Error handling
 --------------
 
