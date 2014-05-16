@@ -178,7 +178,8 @@ let module_name () =
 
 let find_attr name attrs =
   let prefixed_name = "protobuf." ^ name in
-  List.find (fun ({ txt }, _) -> txt = name || txt = prefixed_name) attrs
+  try  List.find (fun ({ txt }, _) -> txt = prefixed_name) attrs
+  with Not_found -> List.find (fun ({ txt }, _) -> txt = name) attrs
 
 let pb_key_of_attrs attrs =
   match find_attr "key" attrs with
