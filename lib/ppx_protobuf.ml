@@ -231,14 +231,16 @@ let fields_of_ptype base_path ptype =
     | [%type: [%t? arg] option] ->
       check_attrs ["key"; "encoding"] ptyp.ptyp_attributes;
       begin match pbf_kind with
-      | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_optional arg
+      | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_optional
+                          { arg with ptyp_attributes = ptyp.ptyp_attributes @ arg.ptyp_attributes }
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
     | [%type: [%t? arg] array] | [%type: [%t? arg] list] ->
       check_attrs ["key"; "encoding"; "packed"] ptyp.ptyp_attributes;
       begin match pbf_kind with
       | Pbk_required ->
-        let { pbf_enc } as field = field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated arg in
+        let { pbf_enc } as field = field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated
+                      { arg with ptyp_attributes = ptyp.ptyp_attributes @ arg.ptyp_attributes } in
         let pbf_enc =
           try  packed_of_attrs ptyp.ptyp_attributes; Pbe_packed pbf_enc
           with Not_found -> pbf_enc
