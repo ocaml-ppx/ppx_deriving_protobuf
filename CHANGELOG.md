@@ -12,6 +12,7 @@ Changelog
   * Reject attributes likely to be misplaced, e.g. [@key] attached
     to a record field name.
   * Support passing concrete types as type parameters.
+  * Add shorthands for encoding and decoding `bytes`.
 
 0.9.0
 -----

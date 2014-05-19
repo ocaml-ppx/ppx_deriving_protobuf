@@ -74,11 +74,11 @@ module Decoder : sig
       If the payload kind is unknown, raises [Failure Malformed_field]. *)
   val key       : t -> (int * payload_kind) option
 
-  (** [decode_string f s] ≡ [f (create s)]. *)
-  val decode_string   : (t -> 'a) -> string -> 'a
+  (** [decode_exn f b] ≡ [f (create b)]. *)
+  val decode_exn      : (t -> 'a) -> bytes -> 'a
 
-  (** [decode_bytes f b] ≡ [f (create b)]. *)
-  val decode_bytes    : (t -> 'a) -> bytes -> 'a
+  (** [decode f b] ≡ [try Some (decode_exn f b) with Failure _ -> None] *)
+  val decode          : (t -> 'a) -> bytes -> 'a option
 
   (** [int_of_int32 fld v] returns [v] truncated to [int].
       If the value doesn't fit in the range of [int], raises
@@ -145,11 +145,11 @@ module Encoder : sig
   (** [key (k, pk) e] writes a key and a payload kind to [e]. *)
   val key       : (int * payload_kind) -> t -> unit
 
-  (** [encode_string f x] ≡ [let e = create () in f x e; to_string f]. *)
-  val encode_string   : ('a -> t -> unit) -> 'a -> string
+  (** [encode_exn f x] ≡ [let e = create () in f x e; to_bytes f]. *)
+  val encode_exn      : ('a -> t -> unit) -> 'a -> bytes
 
-  (** [encode_bytes f x] ≡ [let e = create () in f x e; to_bytes f]. *)
-  val encode_bytes    : ('a -> t -> unit) -> 'a -> bytes
+  (** [encode f x] ≡ [try Some (encode_exn f x) with Failure _ -> None]. *)
+  val encode          : ('a -> t -> unit) -> 'a -> bytes option
 
   (** [int32_of_int fld v] returns [v] truncated to [int32].
       If the value doesn't fit in the range of [int32], raises

@@ -79,11 +79,11 @@ module Decoder = struct
       offset = 0;
       limit  = String.length source; }
 
-  let decode_bytes f source =
+  let decode_exn f source =
     f (of_bytes source)
 
-  let decode_string f source =
-    f (of_string source)
+  let decode f source =
+    try Some (decode_exn f source) with Failure _ -> None
 
   let at_end d =
     d.limit = d.offset
@@ -214,11 +214,11 @@ module Encoder = struct
 
   let to_bytes = Buffer.to_bytes
 
-  let encode_string f x =
-    let e = create () in f x e; to_string e
-
-  let encode_bytes f x =
+  let encode_exn f x =
     let e = create () in f x e; to_bytes e
+
+  let encode f x =
+    try Some (encode_exn f x) with Failure _ -> None
 
   let varint i e =
     let rec write i =

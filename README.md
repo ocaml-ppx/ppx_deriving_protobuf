@@ -67,14 +67,14 @@ val t_to_protobuf   : t -> Protobuf.Encoder.t -> unit
 In order to deserialize a value of type `t` from bytes `message`, use:
 
 ``` ocaml
-let output = Protobuf.Decoder.decode_bytes t_from_protobuf message in
+let output = Protobuf.Decoder.decode_exn t_from_protobuf message in
 ...
 ```
 
 In order to serialize a value `input` of type `t`, use:
 
 ``` ocaml
-let message = Protobuf.Encoder.encode_bytes t_to_protobuf input in
+let message = Protobuf.Encoder.encode_exn t_to_protobuf input in
 ...
 ```
 
