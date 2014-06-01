@@ -9,7 +9,7 @@ script:
   - opam init
   - eval `opam config -env`
   - opam pin ppx_tools git://github.com/alainfrisch/ppx_tools
-  - opam pin ocamlfind git://github.com/whitequark/ocaml-findlib#4.01-bytes-fix
+  - opam pin ocamlfind git://github.com/whitequark/ocaml-findlib
   - opam install -q -y ${OPAM_PACKAGES}
   - ./configure --enable-tests
   - make test
