@@ -452,10 +452,11 @@ let rec derive_reader fields ptype =
     match fields with
     | { pbf_type = Pbt_imm ty; pbf_name; pbf_path; } :: rest ->
       (* Manufacture a structure just for this immediate *)
-      let ptype = Type.mk ~manifest:ty (mkloc ("_" ^ pbf_name) !default_loc) in
+      let ptype  = Type.mk ~manifest:ty (mkloc ("_" ^ pbf_name) !default_loc) in
+      (* Order is important, derive_reader does less checks than derive_reader_bare. *)
+      let reader = derive_reader (fields_of_ptype pbf_path ptype) ptype in
       Exp.let_ Nonrecursive
-               ((derive_reader (fields_of_ptype pbf_path ptype) ptype) ::
-                (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype)))
+               (reader :: (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype)))
                (mk_imm_readers rest k)
     | _ :: rest -> mk_imm_readers rest k
     | [] -> k
@@ -936,10 +937,14 @@ let derive item =
       ty_decls |>
       List.map (fun ({ ptype_name = { txt = name }; ptype_loc } as ptype) ->
         let fields = fields_of_ptype ((module_name ()) ^ "." ^ name) ptype in
-        [derive_reader fields ptype] @
-        (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype)) @
-        [derive_writer fields ptype] @
-        (Option.map_default (fun x -> [x]) [] (derive_writer_bare fields ptype))) |>
+        (* Order is important, writer does less checks than reader. *)
+        let reader =
+          [derive_reader fields ptype] @
+          (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype)) in
+        let writer =
+          [derive_writer fields ptype] @
+          (Option.map_default (fun x -> [x]) [] (derive_writer_bare fields ptype)) in
+        reader @ writer) |>
       List.concat
     in
     [item; Str.value Recursive derived]
