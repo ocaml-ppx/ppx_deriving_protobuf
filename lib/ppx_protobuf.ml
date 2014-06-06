@@ -957,10 +957,10 @@ let protobuf_mapper argv =
         match items with
         | { pstr_desc = Pstr_type ty_decls } as item :: rest when
             List.exists (fun ty -> has_attr "protobuf" ty.ptype_attributes) ty_decls ->
-          derive item @ map_types rest
-        | { pstr_loc } as item :: rest ->
           Ast_helper.with_default_loc pstr_loc (fun () ->
-            mapper.structure_item mapper item :: map_types rest)
+            derive item @ map_types rest)
+        | { pstr_loc } as item :: rest ->
+          mapper.structure_item mapper item :: map_types rest
         | [] -> []
       in
       map_types items
