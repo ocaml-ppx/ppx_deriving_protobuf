@@ -9,7 +9,7 @@ let assert_roundtrip printer encoder decoder str value =
   assert_equal ~printer:(Printf.sprintf "%S") str (Protobuf.Encoder.to_string e);
   (* decode *)
   let d = Protobuf.Decoder.of_string str in
-  assert_equal ~printer value (decoder d);
+  assert_equal ~printer value (decoder d)
 
 type b = bool [@@protobuf]
 let test_bool ctxt =
@@ -192,6 +192,7 @@ let test_variant_bare ctxt =
   in
   assert_roundtrip printer r4_to_protobuf r4_from_protobuf
                    "\x08\x02" { r4a = V2B }
+
 
 type 'a r5 = {
   r5a: 'a [@key 1]

@@ -622,21 +622,18 @@ let rec derive_reader fields ptype =
             | Pbk_optional -> if name = name' then [%pat? arg] else [%pat? None]
             | Pbk_repeated -> if name = name' then [%pat? arg] else [%pat? []])
         in
+        let pat = match pargs with [] -> pkey | pargs -> ptuple (pkey :: pargs) in
         begin match args with
         | [] ->
-          Exp.case (ptuple (pkey :: pargs))
-                   (mk_constr name [])
+          Exp.case pat (mk_constr name [])
         | [arg] ->
           begin match field, arg with
           | Some { pbf_kind = (Pbk_required | Pbk_optional) }, _ ->
-            Exp.case (ptuple (pkey :: pargs))
-                     (mk_constr name [[%expr arg]])
+            Exp.case pat (mk_constr name [[%expr arg]])
           | Some { pbf_kind = Pbk_repeated }, [%type: [%t? _] list] ->
-            Exp.case (ptuple (pkey :: pargs))
-                     (mk_constr name [[%expr List.rev arg]])
+            Exp.case pat (mk_constr name [[%expr List.rev arg]])
           | Some { pbf_kind = Pbk_repeated }, [%type: [%t? _] array] ->
-            Exp.case (ptuple (pkey :: pargs))
-                     (mk_constr name [[%expr Array.of_list (List.rev arg)]])
+            Exp.case pat (mk_constr name [[%expr Array.of_list (List.rev arg)]])
           | _ -> assert false
           end
         | args' -> (* Annoying constructor corner case *)
@@ -645,17 +642,20 @@ let rec derive_reader fields ptype =
               let name = Printf.sprintf "a%d" i in pvar name, evar name) args' |>
             List.split
           in
-          Exp.case (ptuple (pkey :: pargs))
-                   [%expr let [%p ptuple pargs'] = arg in [%e mk_constr name eargs']]
+          Exp.case pat [%expr let [%p ptuple pargs'] = arg in [%e mk_constr name eargs']]
         end :: mk_variant_cases rest
       | [] ->
         let name = (module_name ()) ^ "." ^ ptype_name.txt in
         [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
                               (Failure (Malformed_variant [%e str name]))]]
     in
-    Exp.match_ (tuple ([%expr !variant] ::
-                       List.map (fun name -> [%expr ![%e evar ("constr_" ^ name)]]) with_args))
-               (mk_variant_cases constrs)
+    let input =
+      match with_args with
+      | []   -> [%expr !variant]
+      | args -> (tuple ([%expr !variant] ::
+                  List.map (fun name -> [%expr ![%e evar ("constr_" ^ name)]]) with_args))
+    in
+    Exp.match_ input (mk_variant_cases constrs)
   in
   let constructor =
     match ptype with
@@ -958,8 +958,9 @@ let protobuf_mapper argv =
         | { pstr_desc = Pstr_type ty_decls } as item :: rest when
             List.exists (fun ty -> has_attr "protobuf" ty.ptype_attributes) ty_decls ->
           derive item @ map_types rest
-        | item :: rest ->
-          mapper.structure_item mapper item :: map_types rest
+        | { pstr_loc } as item :: rest ->
+          Ast_helper.with_default_loc pstr_loc (fun () ->
+            mapper.structure_item mapper item :: map_types rest)
         | [] -> []
       in
       map_types items
