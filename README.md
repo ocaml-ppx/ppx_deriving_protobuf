@@ -17,32 +17,7 @@ Installation
 Usage
 -----
 
-In order to enable _ppx_protobuf_, you need to pass the following switch
-to `ocamlc` and `ocamlopt`:
-
-    -ppx ppx_protobuf
-
-If you are using bare OCamlBuild, add the following rule to `myocamlbuild.ml`
-and attach the `use_ppx_protobuf` tag to the relevant `.ml` files:
-
-``` ocaml
-dispatch begin
-  function
-  | After_rules ->
-    (* ... *)
-    flag ["ocaml"; "compile"; "use_ppx_protobuf"] (S[A"-ppx"; A"ppx_protobuf"]);
-  | _ -> ()
-end
-```
-
-If you are using [OASIS][], add the following rules to the `Executable` or `Library`
-section:
-
-    ByteOpt:    -ppx ppx_protobuf
-    NativeOpt:  -ppx ppx_protobuf
-
-[ocamlbuild]: http://brion.inria.fr/gallium/index.php/Ocamlbuild
-[oasis]: http://oasis.forge.ocamlcore.org/
+In order to enable _ppx_protobuf_, simply require the findlib package `protobuf`.
 
 Syntax
 ------
