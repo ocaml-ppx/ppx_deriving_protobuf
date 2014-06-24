@@ -12,14 +12,13 @@ OCamlVersion: >= 4.02
 Library "protobuf"
   Path:           lib
   Modules:        Protobuf
+  XMETAExtraLines: ppx = "ppx_protobuf"
 
 Executable "ppx_protobuf"
   Path:           lib
   BuildDepends:   compiler-libs.common, ppx_tools, extlib
   MainIs:         ppx_protobuf.ml
   CompiledObject: best
-  ByteOpt:        -safe-string -ppx 'ocamlfind ppx_tools/ppx_metaquot'
-  NativeOpt:      -safe-string -ppx 'ocamlfind ppx_tools/ppx_metaquot'
 
 Test "test_ppx_protobuf"
   Command:        ocamlbuild -I lib -package uint -package oUnit  \
