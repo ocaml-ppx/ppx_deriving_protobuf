@@ -16,7 +16,7 @@ Library "protobuf"
 
 Executable "ppx_protobuf"
   Path:           lib
-  BuildDepends:   compiler-libs.common, ppx_tools, extlib
+  BuildDepends:   compiler-libs.common, ppx_tools.ppx_metaquot, extlib
   MainIs:         ppx_protobuf.ml
   CompiledObject: best
 
