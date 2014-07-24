@@ -57,6 +57,15 @@ type error =
 
 exception Error of error
 
+let filter_map f lst =
+  let rec filter result lst =
+    match lst with
+    | Some x :: lst -> filter (x :: result) lst
+    | None   :: lst -> filter result lst
+    | [] -> result
+  in
+  List.map f lst |> filter []
+
 let with_formatter f =
   let buf = Buffer.create 16 in
   let fmt = Format.formatter_of_buffer buf in
@@ -357,19 +366,21 @@ let fields_of_ptype base_path ptype =
       pbf_kind    = Pbk_required;
       pbf_loc     = loc;
       pbf_default = None; } ::
-    (constrs |> ExtList.List.filter_map (fun (name, args, attrs, loc) ->
+    (constrs |> filter_map (fun (name, args, attrs, loc) ->
       let ptyp =
         match args with
         | []    -> None
         | [arg] -> Some arg
         | args  -> Some (Typ.tuple args)
       in
-      ptyp |> Option.map (fun ptyp ->
+      match ptyp with
+      | Some ptyp ->
         check_attrs ["key"] attrs;
         let key = (pb_key_of_attrs attrs) + 1 in
-        field_of_ptyp (Printf.sprintf "constr_%s" name)
-                      (Printf.sprintf "%s.%s" base_path name)
-                      (Some key) Pbk_required ptyp)))
+        Some (field_of_ptyp (Printf.sprintf "constr_%s" name)
+                            (Printf.sprintf "%s.%s" base_path name)
+                            (Some key) Pbk_required ptyp)
+      | None -> None))
   in
   let fields =
     match ptype with
@@ -456,7 +467,8 @@ let rec derive_reader fields ptype =
       (* Order is important, derive_reader does less checks than derive_reader_bare. *)
       let reader = derive_reader (fields_of_ptype pbf_path ptype) ptype in
       Exp.let_ Nonrecursive
-               (reader :: (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype)))
+               (reader :: (match derive_reader_bare fields ptype with
+                           | Some x -> [x] | None -> []))
                (mk_imm_readers rest k)
     | _ :: rest -> mk_imm_readers rest k
     | [] -> k
@@ -596,13 +608,13 @@ let rec derive_reader fields ptype =
       [%expr Array.of_list (List.rev (![%e evar pbf_name]))]
     | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _ | Ptyp_variant _ | Ptyp_var _); } ->
       let default = [%expr raise Protobuf.Decoder.(Failure (Missing_field [%e str pbf_path]))] in
-      let default = Option.default default pbf_default in
+      let default = match pbf_default with Some x -> x | None  -> default in
       [%expr match ![%e evar pbf_name] with None -> [%e default] | Some v -> v ]
     | _ -> assert false
   in
   let mk_variant ptype_name ptype_loc mk_constr constrs =
     let with_args =
-      constrs |> ExtList.List.filter_map (fun pcd ->
+      constrs |> filter_map (fun pcd ->
         match pcd with
         | (name, [],   attrs) -> None
         | (name, args, attrs) -> Some name)
@@ -732,7 +744,8 @@ let rec derive_writer fields ptype =
       let ptype = Type.mk ~manifest:ty (mkloc ("_" ^ pbf_name) !default_loc) in
       Exp.let_ Nonrecursive
                ((derive_writer (fields_of_ptype pbf_path ptype) ptype) ::
-                (Option.map_default (fun x -> [x]) [] (derive_writer_bare fields ptype)))
+                (match derive_writer_bare fields ptype with
+                 | Some x -> [x] | None -> []))
                (mk_imm_writers rest k)
     | _ :: rest -> mk_imm_writers rest k
     | [] -> k
@@ -939,11 +952,15 @@ let derive item =
         let fields = fields_of_ptype ((module_name ()) ^ "." ^ name) ptype in
         (* Order is important, writer does less checks than reader. *)
         let reader =
-          [derive_reader fields ptype] @
-          (Option.map_default (fun x -> [x]) [] (derive_reader_bare fields ptype)) in
+          derive_reader fields ptype ::
+          (match derive_reader_bare fields ptype with
+           | Some x -> [x] | None -> [])
+        in
         let writer =
-          [derive_writer fields ptype] @
-          (Option.map_default (fun x -> [x]) [] (derive_writer_bare fields ptype)) in
+          derive_writer fields ptype ::
+          (match derive_writer_bare fields ptype with
+           | Some x -> [x] | None -> [])
+        in
         reader @ writer) |>
       List.concat
     in
