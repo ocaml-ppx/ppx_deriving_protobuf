@@ -1,6 +1,4 @@
 language: c
-env:
-  - OPAM_PACKAGES="ppx_tools camlp4 oasis extlib"
 script:
   - echo "yes" | sudo add-apt-repository ppa:avsm/ppa-opam-experimental
   - sudo apt-get update -qq
@@ -8,7 +6,8 @@ script:
   - export OPAMYES=1
   - opam init
   - eval `opam config -env`
-  - opam pin ppx_tools git://github.com/alainfrisch/ppx_tools
-  - opam install -q -y ${OPAM_PACKAGES}
-  - ./configure --enable-tests
+  # enable on opam 1.2
+  #- opam pin ppx_protobuf .
+  #- opam install --deps-only -q -y ppx_protobuf
+  - opam install ppx_tools uint ounit extlib
   - make test

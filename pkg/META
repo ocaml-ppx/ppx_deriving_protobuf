@@ -1,0 +1,8 @@
+version = "%%VERSION%%"
+description = "An OCaml Protocol Buffers implementation"
+archive(byte) = "protobuf.cma"
+archive(byte, plugin) = "protobuf.cma"
+archive(native) = "protobuf.cmxa"
+archive(native, plugin) = "protobuf.cmxs"
+exists_if = "protobuf.cma"
+ppx = "./ppx_protobuf"

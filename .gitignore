@@ -1,6 +1,5 @@
-_build/
-*.byte
 *.native
+*.byte
 *.docdir
-setup.log
-setup.data
+_build
+*.install

@@ -1,44 +1,21 @@
-# OASIS_START
-# DO NOT EDIT (digest: a3c674b4239234cbbe53afe090018954)
+build:
+	ocaml pkg/build.ml native=true native-dynlink=true
 
-SETUP = ocaml setup.ml
+test: build
+	rm _build/src_test/ -rf
+	ocamlbuild -use-ocamlfind -I src src_test/test_ppx_protobuf.byte --
 
-build: setup.data
-	$(SETUP) -build $(BUILDFLAGS)
-
-doc: setup.data build
-	$(SETUP) -doc $(DOCFLAGS)
-
-test: setup.data build
-	$(SETUP) -test $(TESTFLAGS)
-
-all:
-	$(SETUP) -all $(ALLFLAGS)
-
-install: setup.data
-	$(SETUP) -install $(INSTALLFLAGS)
-
-uninstall: setup.data
-	$(SETUP) -uninstall $(UNINSTALLFLAGS)
-
-reinstall: setup.data
-	$(SETUP) -reinstall $(REINSTALLFLAGS)
+doc:
+	ocamlbuild -use-ocamlfind doc/api.docdir/index.html \
+						 -docflags -t -docflag "API reference for ppx_protobuf" \
+						 -docflags '-colorize-code -short-functors -charset utf-8' \
+						 -docflags '-css-style style.css'
+	cp doc/style.css api.docdir/
 
 clean:
-	$(SETUP) -clean $(CLEANFLAGS)
+	ocamlbuild -clean
 
-distclean:
-	$(SETUP) -distclean $(DISTCLEANFLAGS)
-
-setup.data:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
-
-configure:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
-
-.PHONY: build doc test all install uninstall reinstall clean distclean configure
-
-# OASIS_STOP
+.PHONY: build test doc clean
 
 gh-pages: doc
 	git clone `git config --get remote.origin.url` .gh-pages --reference .
@@ -51,4 +28,15 @@ gh-pages: doc
 	git -C .gh-pages push origin gh-pages -f
 	rm -rf .gh-pages
 
-.PHONY: gh-pages
+release:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=1.0.0"; exit 1; fi
+	git checkout -B release
+	sed -i 's/%%VERSION%%/$(VERSION)/' pkg/META
+	git add .
+	git commit -m "Prepare for release."
+	git tag -a v$(VERSION) -m "Version $(VERSION)"
+	git checkout @{-1}
+	git branch -D release
+	git push origin v$(VERSION)
+
+.PHONY: gh-pages release

@@ -1,0 +1,2 @@
+true: debug
+<*.{ml,byte,native}>: package(uint), package(oUnit), use_protobuf
