@@ -340,7 +340,7 @@ let test_errors ctxt =
                 (fun () -> r1_from_protobuf d);
   (* tuples *)
   let d = Protobuf.Decoder.of_string "\x0a\x00" in
-  assert_raises Protobuf.Decoder.(Failure (Missing_field "Test_syntax.r3.r3a/1"))
+  assert_raises Protobuf.Decoder.(Failure (Missing_field "Test_syntax.r3.r3a.1"))
                 (fun () -> r3_from_protobuf d);
   (* variants *)
   let d = Protobuf.Decoder.of_string "\x08\x03\x18\x1a" in
