@@ -592,7 +592,7 @@ API Documentation
 -----------------
 
 The documentation for internal API is available at
-[GitHub pages](http://whitequark.github.io/ocaml-ppx_protobuf/).
+[GitHub pages](http://whitequark.github.io/ppx_deriving_protobuf/).
 
 License
 -------
