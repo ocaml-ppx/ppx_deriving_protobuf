@@ -9,5 +9,5 @@ script:
   # enable on opam 1.2
   #- opam pin ppx_protobuf .
   #- opam install --deps-only -q -y ppx_protobuf
-  - opam install ppx_tools uint ounit
+  - opam install ppx_deriving uint ounit
   - make test
