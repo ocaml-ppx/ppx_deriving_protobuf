@@ -123,8 +123,8 @@ message Integers {
 
 ``` ocaml
 type integers = {
-  bar : Uint64.t [@key 1] [@encoding varint];
-  baz : int      [@key 2] [@encoding bits64];
+  bar : Uint64.t [@key 1] [@encoding `varint];
+  baz : int      [@key 2] [@encoding `bits64];
 }
 ```
 
@@ -153,7 +153,7 @@ By default, OCaml types use the following encoding:
 | Uint64.t         | bits64   | fixed64        |
 
 Note that no OCaml type maps to zigzag-encoded `sint32` or `sint64` by default.
-It is necessary to use `[@encoding zigzag]` explicitly.
+It is necessary to use <code>[@encoding `zigzag]</code> explicitly.
 
 ### Floats
 
@@ -169,7 +169,7 @@ message Floats {
 
 ``` ocaml
 type floats = {
-  foo : float [@key 1] [@encoding bits32];
+  foo : float [@key 1] [@encoding `bits32];
   bar : float [@key 2];
 } [@@deriving Protobuf]
 ```
