@@ -4,5 +4,5 @@ build: [
   "ocaml" "pkg/build.ml" "native=%{ocaml-native}%"
                          "native-dynlink=%{ocaml-native-dynlink}%"
 ]
-depends: ["ocamlfind" "ppx_tools" {>= "0.99"}]
+depends: ["ppx_deriving"]
 ocaml-version: [>= "4.02.0"]

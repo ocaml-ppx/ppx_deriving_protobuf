@@ -1,4 +1,5 @@
 open OUnit2
+
 type uint32 = Uint32.t
 type uint64 = Uint64.t
 
@@ -11,23 +12,23 @@ let assert_roundtrip printer encoder decoder str value =
   let d = Protobuf.Decoder.of_string str in
   assert_equal ~printer value (decoder d)
 
-type b = bool [@@protobuf]
+type b = bool [@@deriving Protobuf]
 let test_bool ctxt =
   assert_roundtrip string_of_bool b_to_protobuf b_from_protobuf
                    "\x08\x01" true
 
-type i1  = int                      [@@protobuf]
-type i2  = int   [@encoding zigzag] [@@protobuf]
-type i3  = int   [@encoding bits32] [@@protobuf]
-type i4  = int   [@encoding bits64] [@@protobuf]
-type il1 = int32 [@encoding varint] [@@protobuf]
-type il2 = int32 [@encoding zigzag] [@@protobuf]
-type il3 = Int32.t                  [@@protobuf]
-type il4 = int32 [@encoding bits64] [@@protobuf]
-type iL1 = int64 [@encoding varint] [@@protobuf]
-type iL2 = int64 [@encoding zigzag] [@@protobuf]
-type iL3 = int64 [@encoding bits32] [@@protobuf]
-type iL4 = Int64.t                  [@@protobuf]
+type i1  = int                       [@@deriving Protobuf]
+type i2  = int   [@encoding `zigzag] [@@deriving Protobuf]
+type i3  = int   [@encoding `bits32] [@@deriving Protobuf]
+type i4  = int   [@encoding `bits64] [@@deriving Protobuf]
+type il1 = int32 [@encoding `varint] [@@deriving Protobuf]
+type il2 = int32 [@encoding `zigzag] [@@deriving Protobuf]
+type il3 = Int32.t                   [@@deriving Protobuf]
+type il4 = int32 [@encoding `bits64] [@@deriving Protobuf]
+type iL1 = int64 [@encoding `varint] [@@deriving Protobuf]
+type iL2 = int64 [@encoding `zigzag] [@@deriving Protobuf]
+type iL3 = int64 [@encoding `bits32] [@@deriving Protobuf]
+type iL4 = Int64.t                   [@@deriving Protobuf]
 let test_ints ctxt =
   assert_roundtrip string_of_int i1_to_protobuf i1_from_protobuf
                    "\x08\xac\x02" 300;
@@ -56,14 +57,14 @@ let test_ints ctxt =
   assert_roundtrip Int64.to_string iL4_to_protobuf iL4_from_protobuf
                    "\x09\x2c\x01\x00\x00\x00\x00\x00\x00" 300L
 
-type ul1 = uint32 [@encoding varint] [@@protobuf]
-type ul2 = uint32 [@encoding zigzag] [@@protobuf]
-type ul3 = Uint32.t                  [@@protobuf]
-type ul4 = uint32 [@encoding bits64] [@@protobuf]
-type uL1 = uint64 [@encoding varint] [@@protobuf]
-type uL2 = uint64 [@encoding zigzag] [@@protobuf]
-type uL3 = uint64 [@encoding bits32] [@@protobuf]
-type uL4 = Uint64.t                  [@@protobuf]
+type ul1 = uint32 [@encoding `varint] [@@deriving Protobuf]
+type ul2 = uint32 [@encoding `zigzag] [@@deriving Protobuf]
+type ul3 = Uint32.t                   [@@deriving Protobuf]
+type ul4 = uint32 [@encoding `bits64] [@@deriving Protobuf]
+type uL1 = uint64 [@encoding `varint] [@@deriving Protobuf]
+type uL2 = uint64 [@encoding `zigzag] [@@deriving Protobuf]
+type uL3 = uint64 [@encoding `bits32] [@@deriving Protobuf]
+type uL4 = Uint64.t                   [@@deriving Protobuf]
 let test_uints ctxt =
   assert_roundtrip Uint32.to_string ul1_to_protobuf ul1_from_protobuf
                    "\x08\xac\x02" (Uint32.of_int 300);
@@ -83,25 +84,25 @@ let test_uints ctxt =
   assert_roundtrip Uint64.to_string uL4_to_protobuf uL4_from_protobuf
                    "\x09\x2c\x01\x00\x00\x00\x00\x00\x00" (Uint64.of_int 300)
 
-type f1 = float [@encoding bits32] [@@protobuf]
-type f2 = float                    [@@protobuf]
+type f1 = float [@encoding `bits32] [@@deriving Protobuf]
+type f2 = float                    [@@deriving Protobuf]
 let test_floats ctxt =
   assert_roundtrip string_of_float f1_to_protobuf f1_from_protobuf
                    "\x0d\x00\x00\xC0\x3f" 1.5;
   assert_roundtrip string_of_float f2_to_protobuf f2_from_protobuf
                    "\x09\x00\x00\x00\x00\x00\x00\xF8\x3f" 1.5
 
-type s = string [@@protobuf]
+type s = string [@@deriving Protobuf]
 let test_string ctxt =
   assert_roundtrip (fun x -> x) s_to_protobuf s_from_protobuf
                    "\x0a\x03abc" "abc"
 
-type by = bytes [@@protobuf]
+type by = bytes [@@deriving Protobuf]
 let test_string ctxt =
   assert_roundtrip (fun x -> Bytes.to_string x) by_to_protobuf by_from_protobuf
                    "\x0a\x03abc" (Bytes.of_string "abc")
 
-type o = int option [@@protobuf]
+type o = int option [@@deriving Protobuf]
 let test_option ctxt =
   let printer x = match x with None -> "None" | Some v -> "Some " ^ (string_of_int v) in
   assert_roundtrip printer o_to_protobuf o_from_protobuf
@@ -109,7 +110,7 @@ let test_option ctxt =
   assert_roundtrip printer o_to_protobuf o_from_protobuf
                    "\x08\xac\x02" (Some 300)
 
-type l = int list [@@protobuf]
+type l = int list [@@deriving Protobuf]
 let test_list ctxt =
   let printer x = x |> List.map string_of_int |> String.concat ", " in
   assert_roundtrip printer l_to_protobuf l_from_protobuf
@@ -117,7 +118,7 @@ let test_list ctxt =
   assert_roundtrip printer l_to_protobuf l_from_protobuf
                    "\x08\xac\x02\x08\x2a" [300; 42]
 
-type a = int array [@@protobuf]
+type a = int array [@@deriving Protobuf]
 let test_array ctxt =
   let printer x = Array.to_list x |> List.map string_of_int |> String.concat ", " in
   assert_roundtrip printer a_to_protobuf a_from_protobuf
@@ -125,7 +126,7 @@ let test_array ctxt =
   assert_roundtrip printer a_to_protobuf a_from_protobuf
                    "\x08\xac\x02\x08\x2a" [|300; 42|]
 
-type t = int * string [@@protobuf]
+type t = int * string [@@deriving Protobuf]
 let test_tuple ctxt =
   let printer (x, y) = Printf.sprintf "%d, %s" x y in
   assert_roundtrip printer t_to_protobuf t_from_protobuf
@@ -134,7 +135,7 @@ let test_tuple ctxt =
 type r1 = {
   r1a : int    [@key 1];
   r1b : string [@key 2];
-} [@@protobuf]
+} [@@deriving Protobuf]
 let test_record ctxt =
   let printer r = Printf.sprintf "{ r1a = %d, r1b = %s }" r.r1a r.r1b in
   assert_roundtrip printer r1_to_protobuf r1_from_protobuf
@@ -143,7 +144,7 @@ let test_record ctxt =
 
 type r2 = {
   r2a : r1 [@key 1];
-} [@@protobuf]
+} [@@deriving Protobuf]
 let test_nested ctxt =
   let printer r = Printf.sprintf "{ r2a = { r1a = %d, r1b = %s } }" r.r2a.r1a r.r2a.r1b in
   assert_roundtrip printer r2_to_protobuf r2_from_protobuf
@@ -151,8 +152,8 @@ let test_nested ctxt =
                    { r2a = { r1a = 300; r1b = "spartans" } }
 
 type r3 = {
-  r3a : (int [@encoding bits32] * string) [@key 1];
-} [@@protobuf]
+  r3a : (int [@encoding `bits32] * string) [@key 1];
+} [@@deriving Protobuf]
 let test_imm_tuple ctxt =
   let printer { r3a = a, b } = Printf.sprintf "{ r3a = %d, %s } }" a b in
   assert_roundtrip printer r3_to_protobuf r3_from_protobuf
@@ -164,7 +165,7 @@ type v1 =
 | V1B [@key 2]
 | V1C [@key 3] of int
 | V1D [@key 4] of string * string
-[@@protobuf]
+[@@deriving Protobuf]
 let test_variant ctxt =
   let printer v =
     match v with
@@ -185,7 +186,7 @@ type v2 =
 | V2B [@key 2]
 and r4 = {
   r4a : v2 [@key 1] [@bare]
-} [@@protobuf]
+} [@@deriving Protobuf]
 let test_variant_bare ctxt =
   let printer { r4a } =
     match r4a with V2A -> "{ r4a = V2A }" | V2B -> "{ r4a = V2B }"
@@ -196,7 +197,7 @@ let test_variant_bare ctxt =
 
 type 'a r5 = {
   r5a: 'a [@key 1]
-} [@@protobuf]
+} [@@deriving Protobuf]
 let test_tvar ctxt =
   let printer f { r5a } = Printf.sprintf "{ r5a = %s }" (f r5a) in
   assert_roundtrip (printer string_of_int)
@@ -207,7 +208,7 @@ let test_tvar ctxt =
 type 'a mylist =
 | Nil  [@key 1]
 | Cons [@key 2] of 'a * 'a mylist
-[@@protobuf]
+[@@deriving Protobuf]
 let test_mylist ctxt =
   let rec printer f v =
     match v with
@@ -223,7 +224,7 @@ let test_mylist ctxt =
                    (Cons (1, (Cons (2, (Cons (3, Nil))))))
 
 type v3 = [ `V3A [@key 1] | `V3B [@key 2] of int | `V3C [@key 3] of string * string ]
-[@@protobuf]
+[@@deriving Protobuf]
 let test_poly_variant ctxt =
   let printer v =
     match v with
@@ -240,7 +241,7 @@ let test_poly_variant ctxt =
 
 type r6 = {
   r6a : [ `R6A [@key 1] | `R6B [@key 2] ] [@key 1];
-} [@@protobuf]
+} [@@deriving Protobuf]
 let test_imm_pvariant ctxt =
   let printer { r6a } =
     match r6a with `R6A -> "{ r6a = `R6A }" | `R6B -> "{ r6a = `R6B }"
@@ -251,7 +252,7 @@ let test_imm_pvariant ctxt =
 type v4 = [ `V4A [@key 1] | `V4B [@key 2] ]
 and r7 = {
   r7a : v4 [@key 1] [@bare]
-} [@@protobuf]
+} [@@deriving Protobuf]
 let test_pvariant_bare ctxt =
   let printer { r7a } =
     match r7a with `V4A -> "{ r7a = `V4A }" | `V4B -> "{ r7a = `V4B }"
@@ -262,7 +263,7 @@ let test_pvariant_bare ctxt =
 type r8 = {
   r8a : [ `Request [@key 1] | `Reply [@key 2] ] [@key 1] [@bare];
   r8b : int [@key 2];
-} [@@protobuf]
+} [@@deriving Protobuf]
 let test_imm_pv_bare ctxt =
   let printer { r8a; r8b } =
     match r8a with
@@ -277,7 +278,7 @@ type v5 =
 | V5B [@key 2] of string list
 | V5C [@key 3] of int array
 | V5D [@key 4]
-[@@protobuf]
+[@@deriving Protobuf]
 let test_variant_optrep ctxt =
   let printer v5 =
     match v5 with
@@ -300,20 +301,20 @@ let test_variant_optrep ctxt =
   assert_roundtrip printer v5_to_protobuf v5_from_protobuf
                    "\x08\x03" (V5C [||])
 
-type r9 = i1 r5 [@@protobuf]
+type r9 = i1 r5 [@@deriving Protobuf]
 let test_nonpoly ctxt =
   let printer { r5a } = Printf.sprintf "{ r5a = %d }" r5a in
   assert_roundtrip printer r9_to_protobuf r9_from_protobuf
                    "\x0a\x04\x0a\x02\x08\x01" { r5a = 1 }
 
-type d = int [@default 42] [@@protobuf]
+type d = int [@default 42] [@@deriving Protobuf]
 let test_default ctxt =
   assert_roundtrip string_of_int d_to_protobuf d_from_protobuf
                    "" 42;
   assert_roundtrip string_of_int d_to_protobuf d_from_protobuf
                    "\x08\x01" 1
 
-type p = int list [@packed] [@@protobuf]
+type p = int list [@packed] [@@deriving Protobuf]
 let test_packed ctxt =
   let printer xs = Printf.sprintf "[%s]" (String.concat "; " (List.map string_of_int xs)) in
   assert_roundtrip printer p_to_protobuf p_from_protobuf
