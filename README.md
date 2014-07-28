@@ -11,6 +11,8 @@ from an OCaml type definition.
 Installation
 ------------
 
+_deriving Protobuf_ can be installed via [OPAM](https://opam.ocaml.org):
+
     $ opam install ppx_deriving_protobuf
 
 Usage
