@@ -5,4 +5,3 @@ build: [
                          "native-dynlink=%{ocaml-native-dynlink}%"
 ]
 depends: ["ppx_deriving" {>= "0.2"}]
-ocaml-version: [>= "4.02.0"]
