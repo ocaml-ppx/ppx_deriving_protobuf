@@ -472,7 +472,7 @@ let rec derive_reader base_path fields ptype =
     | Pbt_variant _, Pbe_varint -> value
     (* nested *)
     | Pbt_nested (args, lid), Pbe_bytes ->
-      let reader lid = Exp.ident (mkloc (Ppx_deriving.mangle_lid ~suffix:"_from_protobuf" lid) !default_loc) in
+      let reader lid = Exp.ident (mknoloc (Ppx_deriving.mangle_lid (`Suffix "from_protobuf") lid)) in
       let rec expr_of_core_type ptyp =
         match ptyp with
         | { ptyp_desc = Ptyp_var tvar } -> evar ("poly_" ^ tvar)
@@ -483,7 +483,7 @@ let rec derive_reader base_path fields ptype =
       in
       app (reader lid) ((List.map expr_of_core_type args) @ [[%expr Protobuf.Decoder.nested decoder]])
     | Pbt_nested ([], lid), Pbe_varint -> (* bare enum *)
-      let ident = Exp.ident (mkloc (Ppx_deriving.mangle_lid ~suffix:"_from_protobuf_bare" lid) !default_loc) in
+      let ident = Exp.ident (mknoloc (Ppx_deriving.mangle_lid (`Suffix "from_protobuf_bare") lid)) in
       [%expr [%e ident] decoder]
     (* immediate *)
     | Pbt_imm _, Pbe_bytes ->
@@ -689,7 +689,7 @@ let rec derive_writer fields ptype =
     match fields with
     | { pbf_type = Pbt_imm ty; pbf_name; pbf_path; } :: rest ->
       (* Manufacture a structure just for this immediate *)
-      let ptype = Type.mk ~manifest:ty (mkloc ("_" ^ pbf_name) !default_loc) in
+      let ptype = Type.mk ~manifest:ty (mknoloc ("_" ^ pbf_name)) in
       Exp.let_ Nonrecursive
                ((derive_writer (fields_of_ptype pbf_path ptype) ptype) ::
                 (match derive_writer_bare fields ptype with
@@ -745,7 +745,7 @@ let rec derive_writer fields ptype =
     | Pbt_variant _, Pbe_varint -> encode (evar pbf_name)
     (* nested *)
     | Pbt_nested (args, lid), Pbe_bytes ->
-      let writer lid = Exp.ident (mkloc (Ppx_deriving.mangle_lid ~suffix:"_to_protobuf" lid) !default_loc) in
+      let writer lid = Exp.ident (mknoloc (Ppx_deriving.mangle_lid (`Suffix "to_protobuf") lid)) in
       let rec expr_of_core_type ptyp =
         match ptyp with
         | { ptyp_desc = Ptyp_var tvar } -> evar ("poly_" ^ tvar)
@@ -757,7 +757,7 @@ let rec derive_writer fields ptype =
       [%expr Protobuf.Encoder.nested
         [%e app (writer lid) ((List.map expr_of_core_type args) @ [evar pbf_name])] encoder]
     | Pbt_nested ([], lid), Pbe_varint -> (* bare enum *)
-      let ident = Exp.ident (mkloc (Ppx_deriving.mangle_lid ~suffix:"_to_protobuf_bare" lid) !default_loc) in
+      let ident = Exp.ident (mknoloc (Ppx_deriving.mangle_lid (`Suffix "to_protobuf_bare") lid)) in
       [%expr ([%e ident] [%e evar pbf_name]) encoder]
     (* immediate *)
     | Pbt_imm _, Pbe_bytes ->
@@ -895,59 +895,53 @@ let rec derive_writer fields ptype =
   Vb.mk (pvar (ptype.ptype_name.txt ^ "_to_protobuf"))
         (Ppx_deriving.poly_fun_of_type_decl ptype [%expr fun value encoder -> [%e write]])
 
-let derive_struct ~path type_decls =
-  try
-    type_decls |>
-    List.map (fun ({ ptype_name = { txt = name }; ptype_loc } as ptype) ->
-      let path   = path @ [name] in
-      let fields = fields_of_ptype path ptype in
-      (* Order is important, writer does less checks than reader. *)
-      let reader =
-        derive_reader path fields ptype ::
-        (match derive_reader_bare path fields ptype with | Some x -> [x] | None -> [])
-      in
-      let writer =
-        derive_writer fields ptype ::
-        (match derive_writer_bare fields ptype with | Some x -> [x] | None -> [])
-      in
-      reader @ writer) |>
-    List.concat |>
-    fun derived -> [Str.value Recursive derived]
-  with exn ->
-    match Location.error_of_exn exn with
-    | Some err -> [Str.extension (Ast_mapper.extension_of_error err)]
-    | None -> raise exn
+let str_of_type ~options ~path ({ ptype_name = { txt = name }; ptype_loc } as ptype) =
+  let path   = path @ [name] in
+  let fields = fields_of_ptype path ptype in
+  (* Order is important, writer does less checks than reader. *)
+  let reader =
+    derive_reader path fields ptype ::
+    (match derive_reader_bare path fields ptype with | Some x -> [x] | None -> [])
+  in
+  let writer =
+    derive_writer fields ptype ::
+    (match derive_writer_bare fields ptype with | Some x -> [x] | None -> [])
+  in
+  reader @ writer
 
-let derive_sig type_decls =
-  type_decls |>
-  List.map (fun ({ ptype_name = { txt = name } } as ptype) ->
-    let has_bare =
-      match ptype with
-      | { ptype_kind = Ptype_variant constrs } when
-          List.for_all (fun { pcd_args } -> pcd_args = []) constrs -> true
-      | { ptype_kind = Ptype_abstract;
-          ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
-            List.for_all (fun row_field ->
-              match row_field with Rtag (_, _, _, []) -> true | _ -> false) rows -> true
-      | _ -> false
-    in
-    let typ = Ppx_deriving.typ_of_type_decl ptype in
-    let reader_typ = Ppx_deriving.poly_arrow_of_type_decl
-      (fun var -> [%type: Protobuf.Decoder.t -> [%t var]]) ptype
-      [%type: Protobuf.Decoder.t -> [%t typ]]
-    and writer_typ = Ppx_deriving.poly_arrow_of_type_decl
-      (fun var -> [%type: [%t var] -> Protobuf.Encoder.t -> unit]) ptype
-      [%type: [%t typ] -> Protobuf.Encoder.t -> unit]
-    in
-    (if not has_bare then [] else
-      [Sig.value (Val.mk (mknoloc (name^"_from_protobuf_bare")) reader_typ);
-       Sig.value (Val.mk (mknoloc (name^"_to_protobuf_bare")) writer_typ)]) @
-    [Sig.value (Val.mk (mknoloc (name^"_from_protobuf")) reader_typ);
-     Sig.value (Val.mk (mknoloc (name^"_to_protobuf")) writer_typ)]) |>
-  List.concat
+let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
+  let has_bare =
+    match ptype with
+    | { ptype_kind = Ptype_variant constrs } when
+        List.for_all (fun { pcd_args } -> pcd_args = []) constrs -> true
+    | { ptype_kind = Ptype_abstract;
+        ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
+          List.for_all (fun row_field ->
+            match row_field with Rtag (_, _, _, []) -> true | _ -> false) rows -> true
+    | _ -> false
+  in
+  let typ = Ppx_deriving.core_type_of_type_decl ptype in
+  let reader_typ = Ppx_deriving.poly_arrow_of_type_decl
+    (fun var -> [%type: Protobuf.Decoder.t -> [%t var]]) ptype
+    [%type: Protobuf.Decoder.t -> [%t typ]]
+  and writer_typ = Ppx_deriving.poly_arrow_of_type_decl
+    (fun var -> [%type: [%t var] -> Protobuf.Encoder.t -> unit]) ptype
+    [%type: [%t typ] -> Protobuf.Encoder.t -> unit]
+  in
+  (if not has_bare then [] else
+    [Sig.value (Val.mk (mknoloc (name^"_from_protobuf_bare")) reader_typ);
+     Sig.value (Val.mk (mknoloc (name^"_to_protobuf_bare")) writer_typ)]) @
+  [Sig.value (Val.mk (mknoloc (name^"_from_protobuf")) reader_typ);
+   Sig.value (Val.mk (mknoloc (name^"_to_protobuf")) writer_typ)]
 
 let () =
-  Ppx_deriving.register "Protobuf" (fun ~options ~path type_decls ->
-    assert (options = []);
-    derive_struct ~path type_decls,
-    derive_sig type_decls)
+  Ppx_deriving.(register "Protobuf" {
+    core_type = (fun { ptyp_loc } ->
+      raise_errorf ~loc:ptyp_loc "[%%derive.Protobuf] is not supported");
+    structure = (fun ~options ~path type_decls ->
+      assert (options = []);
+      [Str.value Recursive (List.concat (List.map (str_of_type ~options ~path) type_decls))]);
+    signature = (fun ~options ~path type_decls ->
+      assert (options = []);
+      List.concat (List.map (sig_of_type ~options ~path) type_decls));
+  })
