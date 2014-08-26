@@ -5,6 +5,8 @@ _deriving Protobuf_ is a [ppx_deriving][pd] plugin that generates
 [Google Protocol Buffers][pb] serializers and deserializes
 from an OCaml type definition.
 
+Sponsored by [Evil Martians](http://evilmartians.com).
+
 [pd]: https://github.com/whitequark/ppx_deriving
 [pb]: https://developers.google.com/protocol-buffers/
 
