@@ -650,7 +650,7 @@ let rec derive_reader base_path fields ptype =
     mk_cells fields |>
     mk_imm_readers fields
   in
-  Vb.mk (pvar (ptype.ptype_name.txt ^ "_from_protobuf"))
+  Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf") ptype))
         (Ppx_deriving.poly_fun_of_type_decl ptype [%expr fun decoder -> [%e read]])
 
 let derive_writer_bare fields ptype =
@@ -666,7 +666,7 @@ let derive_writer_bare fields ptype =
     in
     let matcher = Exp.match_ [%expr value] (mk_variant_cases constrs) in
     let writer  = [%expr Protobuf.Encoder.varint [%e matcher] encoder] in
-    Some (Vb.mk (pvar (ptype.ptype_name.txt ^ "_to_protobuf_bare"))
+    Some (Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf_bare") ptype))
                 [%expr fun value encoder -> [%e writer]])
   in
   match ptype with
@@ -892,7 +892,7 @@ let rec derive_writer fields ptype =
           (name, pcd_args, pcd_attributes)) constrs)
   in
   let write = mk_deconstructor fields |> mk_imm_writers fields in
-  Vb.mk (pvar (ptype.ptype_name.txt ^ "_to_protobuf"))
+  Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype))
         (Ppx_deriving.poly_fun_of_type_decl ptype [%expr fun value encoder -> [%e write]])
 
 let str_of_type ~options ~path ({ ptype_name = { txt = name }; ptype_loc } as ptype) =
@@ -929,10 +929,14 @@ let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
     [%type: [%t typ] -> Protobuf.Encoder.t -> unit]
   in
   (if not has_bare then [] else
-    [Sig.value (Val.mk (mknoloc (name^"_from_protobuf_bare")) reader_typ);
-     Sig.value (Val.mk (mknoloc (name^"_to_protobuf_bare")) writer_typ)]) @
-  [Sig.value (Val.mk (mknoloc (name^"_from_protobuf")) reader_typ);
-   Sig.value (Val.mk (mknoloc (name^"_to_protobuf")) writer_typ)]
+    [Sig.value (Val.mk (mknoloc
+        (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf_bare") ptype)) reader_typ);
+     Sig.value (Val.mk (mknoloc
+        (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf_bare") ptype)) writer_typ)]) @
+  [Sig.value (Val.mk (mknoloc
+      (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf") ptype)) reader_typ);
+   Sig.value (Val.mk (mknoloc
+      (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype)) writer_typ)]
 
 let () =
   Ppx_deriving.(register "Protobuf" {
