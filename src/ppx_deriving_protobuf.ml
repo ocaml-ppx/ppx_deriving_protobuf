@@ -385,7 +385,7 @@ let derive_reader_bare base_path fields ptype =
     let matcher =
       Exp.match_ [%expr Protobuf.Decoder.varint decoder]
                  (mk_variant_cases constrs) in
-    Some (Vb.mk (pvar (ptype.ptype_name.txt ^ "_from_protobuf_bare"))
+    Some (Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf_bare") ptype))
                 [%expr fun decoder -> [%e matcher]])
   in
   match ptype with
