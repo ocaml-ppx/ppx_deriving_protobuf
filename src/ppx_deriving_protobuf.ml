@@ -939,9 +939,8 @@ let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
       (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype)) writer_typ)]
 
 let () =
-  Ppx_deriving.(register "Protobuf" {
-    core_type = (fun { ptyp_loc } ->
-      raise_errorf ~loc:ptyp_loc "[%%derive.Protobuf] is not supported");
+  Ppx_deriving.(register "protobuf" {
+    core_type = None;
     structure = (fun ~options ~path type_decls ->
       assert (options = []);
       [Str.value Recursive (List.concat (List.map (str_of_type ~options ~path) type_decls))]);

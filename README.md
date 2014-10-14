@@ -1,7 +1,7 @@
-[@@deriving Protobuf]
+[@@deriving protobuf]
 =====================
 
-_deriving Protobuf_ is a [ppx_deriving][pd] plugin that generates
+_deriving protobuf_ is a [ppx_deriving][pd] plugin that generates
 [Google Protocol Buffers][pb] serializers and deserializes
 from an OCaml type definition.
 
@@ -13,32 +13,31 @@ Sponsored by [Evil Martians](http://evilmartians.com).
 Installation
 ------------
 
-_deriving Protobuf_ can be installed via [OPAM](https://opam.ocaml.org):
+_deriving protobuf_ can be installed via [OPAM](https://opam.ocaml.org):
 
     $ opam install ppx_deriving_protobuf
 
 Usage
 -----
 
-In order to use _deriving Protobuf_, require the syntax extension package `ppx_deriving`
-and the runtime library package `ppx_deriving_protobuf.runtime`.
+In order to use _deriving protobuf_, require the package `ppx_deriving_protobuf`.
 
 Syntax
 ------
 
-_deriving Protobuf_ is not a replacement for _protoc_ and it does not attempt to generate
+_deriving protobuf_ is not a replacement for _protoc_ and it does not attempt to generate
 code based on _protoc_ definitions. Instead, it generates code based on OCaml type
 definitions.
 
-_deriving Protobuf_-generated serializers are derived from the structure of the type
+_deriving protobuf_-generated serializers are derived from the structure of the type
 and several attributes: `@key`, `@encoding`, `@bare` and `@default`. Generation
 of the serializer is triggered by a `@@[deriving Protobuf]` attribute attached
 to the type definition.
 
-_deriving Protobuf_ generates two functions per type:
+_deriving protobuf_ generates two functions per type:
 
 ``` ocaml
-type t = ... [@@deriving Protobuf]
+type t = ... [@@deriving protobuf]
 val t_from_protobuf : Protobuf.Decoder.t -> t
 val t_to_protobuf   : t -> Protobuf.Encoder.t -> unit
 ```
@@ -61,7 +60,7 @@ let message = Protobuf.Encoder.encode_exn t_to_protobuf input in
 
 A record is the most obvious counterpart for a Protobuf message. In a record, every
 field must have an explicitly defined key. For example, consider this _protoc_
-definition and its _deriving Protobuf_ equivalent:
+definition and its _deriving protobuf_ equivalent:
 
 ``` protoc
 message SearchRequest {
@@ -76,10 +75,10 @@ type search_request = {
   query           : string     [@key 1];
   page_number     : int option [@key 2];
   result_per_page : int option [@key 3];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
-_deriving Protobuf_ recognizes and maps `option` to optional fields, and
+_deriving protobuf_ recognizes and maps `option` to optional fields, and
 `list` and `array` to repeated fields.
 
 ### Optional and default fields
@@ -103,20 +102,20 @@ type defaults = {
 
 Note that _protoc_'s default behavior is to assign a type-specific default value
 to optional fields missing from message, i.e. `0` to integer fields, `""` to
-string fields, and so on. With _deriving Protobuf_, optional fields are represented
+string fields, and so on. With _deriving protobuf_, optional fields are represented
 with the `option` type; it is possible to emulate _protoc_'s behavior by explicitly
 specifying `int [@default 0]`, etc.
 
 ### Integers
 
-Unlike _protoc_, _deriving Protobuf_ allows a much more flexible mapping between
+Unlike _protoc_, _deriving protobuf_ allows a much more flexible mapping between
 wire representations of integral types and their counterparts in OCaml.
 Any combination of the known integral types (`int`, `int32`, `int64`,
 `Int32.t`, `Int64.t`, `Uint32.t` and `Uint64.t`) and wire representations
 (`varint`, `zigzag`, `bits32` and `bits64`) is valid. The wire representation
 is specified using the `@encoding` attribute.
 
-For example, consider this _protoc_ definition and a compatible _deriving Protobuf_ one:
+For example, consider this _protoc_ definition and a compatible _deriving protobuf_ one:
 
 ``` protoc
 message Integers {
@@ -137,7 +136,7 @@ If a value does not fit into the narrower type used for serialization or deseria
 `Decoder.Error Decoder.Overflow` or `Encoder.Error Encoder.Overflow` is raised.
 
 The following table summarizes equivalence between integral types of _protoc_
-and encodings of _deriving Protobuf_:
+and encodings of _deriving protobuf_:
 
 | Encoding | _protoc_ type                |
 | -------- | ---------------------------- |
@@ -175,7 +174,7 @@ message Floats {
 type floats = {
   foo : float [@key 1] [@encoding `bits32];
   bar : float [@key 2];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
 ### Booleans
@@ -191,7 +190,7 @@ message Booleans {
 ``` ocaml
 type booleans = {
   bar : bool [@key 1];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
 ### Strings and bytes
@@ -200,7 +199,7 @@ All of `string`, `String.t`, `bytes` and `Bytes.t` map to _protoc_'s `string` or
 `bytes` and are encoded on wire using `bytes`:
 
 Note that unlike _protoc_, which has an additional invariant that the contents of
-a `string` must be valid UTF-8 text, _deriving Protobuf_ does not have this invariant.
+a `string` must be valid UTF-8 text, _deriving protobuf_ does not have this invariant.
 However, you still should observe it in your programs.
 
 ``` protoc
@@ -214,7 +213,7 @@ message Strings {
 type strings = {
   bar : string [@key 1];
   baz : bytes  [@key 2];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
 ### Tuples
@@ -225,7 +224,7 @@ rewritten as:
 
 ``` ocaml
 type search_request' = string * int option * int option
-[@@deriving Protobuf]
+[@@deriving protobuf]
 ```
 
 Additionally, a tuple can be used in any context where a scalar value is expected;
@@ -246,12 +245,12 @@ message Nested {
 type nested = {
   foo : int                     [@key 1];
   bar : (string * float) option [@key 2];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
 ### Variants
 
-An OCaml variant types is normally mapped to an entire Protobuf message by _deriving Protobuf_,
+An OCaml variant types is normally mapped to an entire Protobuf message by _deriving protobuf_,
 as opposed to _protoc_, which maps an `enum` to a simple `varint`. This is done because
 OCaml constructors can have arguments, but _protoc_'s `enum`s can not.
 
@@ -287,7 +286,7 @@ type variant =
 | A [@key 1]
 | B [@key 2] of int
 | C [@key 3] of string * string
-[@@deriving Protobuf]
+[@@deriving protobuf]
 ```
 
 Note that decoder considers messages which contain more than one optional field
@@ -312,14 +311,14 @@ type bare_variant =
 | B [@key 2]
 and container = {
   value : bare_variant [@key 1] [@bare];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
 In practice, if a variant has no constructors with arguments, additional two
 functions are generated with the following signatures:
 
 ``` ocaml
-type t = A | B | ... [@@deriving Protobuf]
+type t = A | B | ... [@@deriving protobuf]
 val t_from_protobuf_bare : Protobuf.Decoder.t -> t
 val t_to_protobuf_bare   : Protobuf.Encoder.t -> t -> unit
 ```
@@ -351,12 +350,12 @@ message Packet {
 type packet = {
   type  : [ `Request [@key 1] | `Reply [@key 2] ] [@key 1] [@bare];
   value : int [@key 2];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
 ### Type aliases
 
-A type alias (statement of form `type a = b`) is treated by _deriving Protobuf_ as
+A type alias (statement of form `type a = b`) is treated by _deriving protobuf_ as
 a definition of a message with one field with key 1:
 
 ``` protoc
@@ -366,19 +365,19 @@ message Alias {
 ```
 
 ``` ocaml
-type alias = int [@@deriving Protobuf]
+type alias = int [@@deriving protobuf]
 ```
 
 ### Nested messages
 
-When _deriving Protobuf_ encounters a non-scalar type, it generates a call to
+When _deriving protobuf_ encounters a non-scalar type, it generates a call to
 the serialization or deserialization function corresponding to the full path
 to the type.
 
 Consider this definition:
 
 ``` ocaml
-type foo = bar * Baz.Quux.t [@@deriving Protobuf]
+type foo = bar * Baz.Quux.t [@@deriving protobuf]
 ```
 
 The generated deserializer code will refer to `bar_from_protobuf` and
@@ -400,12 +399,12 @@ message Packed {
 ```
 
 ``` ocaml
-type packed = int list [@key 1] [@packed] [@@deriving Protobuf]
+type packed = int list [@key 1] [@packed] [@@deriving protobuf]
 ```
 
 ### Parametric polymorphism
 
-_deriving Protobuf_ is able to handle polymorphic type definitions. In this case,
+_deriving protobuf_ is able to handle polymorphic type definitions. In this case,
 the serializing or deserializing function will accept one additional argument
 for every type variable; correspondingly, the value of this argument will be
 passed to serializer or deserializer of any nested parametric type.
@@ -416,7 +415,7 @@ Consider this example:
 type 'a mylist =
 | Nil  [@key 1]
 | Cons [@key 2] of 'a * 'a mylist
-[@@deriving Protobuf]
+[@@deriving protobuf]
 ```
 
 Here, the following functions will be generated:
@@ -431,19 +430,19 @@ val mylist_to_protobuf   : (Protobuf.Decoder.t -> 'a -> unit) -> Protobuf.Decode
 An example usage would be:
 
 ``` ocaml
-type a = int [@@deriving Protobuf]
+type a = int [@@deriving protobuf]
 
 let get_ints message =
   let decoder = Protobuf.Decoder.of_bytes message in
   mylist_from_protobuf a_from_protobuf decoder
 ```
 
-It's also possible to specify concrete types as parameters; in this case, _deriving Protobuf_
+It's also possible to specify concrete types as parameters; in this case, _deriving protobuf_
 will infer the serializer/deserializer functions automatically. For example:
 
 ``` ocaml
 (* Combining two samples above *)
-type b = a mylist [@@deriving Protobuf]
+type b = a mylist [@@deriving protobuf]
 ```
 
 Error handling
@@ -489,7 +488,7 @@ For example, the `string` field will have the path `Foo.r.ra/1`:
 (* foo.ml *)
 type r = {
   ra: (int * string) option [@key 1];
-} [@@deriving Protobuf]
+} [@@deriving protobuf]
 ```
 
 ### Encoder errors
@@ -579,11 +578,11 @@ Compatibility
 Protocol Buffers specification [suggests][optional] that if a message contains
 multiple instances of a `required` or `optional` nested message, those nested
 messages should be merged. However, there is no concept of "merging messages"
-accessible to _deriving Protobuf_, and this feature can be considered harmful anyway:
-it is far too forgiving of invalid input. Thus, _deriving Protobuf_ doesn't implement
+accessible to _deriving protobuf_, and this feature can be considered harmful anyway:
+it is far too forgiving of invalid input. Thus, _deriving protobuf_ doesn't implement
 this merging.
 
-_deriving Protobuf_ is more strict than _protoc_ with numeric types; it raises
+_deriving protobuf_ is more strict than _protoc_ with numeric types; it raises
 `Failure (Overflow fld)` rather than silently truncate values. It is thought
 that accidentally losing 32th or 64th bit with OCaml's `int` type would be
 a common error without this countermeasure.

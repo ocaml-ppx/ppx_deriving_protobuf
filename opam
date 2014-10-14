@@ -19,7 +19,7 @@ build-doc: [
   make "doc"
 ]
 depends: [
-  "ppx_deriving" {>= "0.2"}
+  "ppx_deriving" {>= "0.3"}
   "ounit"        {test}
   "uint"         {test}
 ]
