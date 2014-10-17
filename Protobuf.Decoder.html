@@ -1,0 +1,181 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<link rel="Start" href="index.html">
+<link rel="next" href="Protobuf.Encoder.html">
+<link rel="Up" href="Protobuf.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Protobuf" rel="Chapter" href="Protobuf.html"><title>API reference for ppx_protobuf : Protobuf.Decoder</title>
+</head>
+<body>
+<div class="navbar">&nbsp;<a class="up" href="Protobuf.html" title="Protobuf">Up</a>
+&nbsp;<a class="post" href="Protobuf.Encoder.html" title="Protobuf.Encoder">Next</a>
+</div>
+<h1>Module <a href="type_Protobuf.Decoder.html">Protobuf.Decoder</a></h1>
+
+<pre><span class="keyword">module</span> Decoder: <code class="code"><span class="keyword">sig</span></code> <a href="Protobuf.Decoder.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><hr width="100%">
+
+<pre><code><span id="TYPEerror"><span class="keyword">type</span> <code class="type"></code>error</span> = </code></pre><table class="typetable">
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTerror.Incomplete"><span class="constructor">Incomplete</span></span></code></td>
+
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTerror.Overlong_varint"><span class="constructor">Overlong_varint</span></span></code></td>
+
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTerror.Malformed_field"><span class="constructor">Malformed_field</span></span></code></td>
+
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTerror.Overflow"><span class="constructor">Overflow</span></span> <span class="keyword">of</span> <code class="type">string</code></code></td>
+
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTerror.Unexpected_payload"><span class="constructor">Unexpected_payload</span></span> <span class="keyword">of</span> <code class="type">string * <a href="Protobuf.html#TYPEpayload_kind">Protobuf.payload_kind</a></code></code></td>
+
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTerror.Missing_field"><span class="constructor">Missing_field</span></span> <span class="keyword">of</span> <code class="type">string</code></code></td>
+
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTerror.Malformed_variant"><span class="constructor">Malformed_variant</span></span> <span class="keyword">of</span> <code class="type">string</code></code></td>
+
+</tr></table>
+
+<div class="info ">
+Type of failures possible while decoding.<br>
+</div>
+
+
+<pre><span id="VALerror_to_string"><span class="keyword">val</span> error_to_string</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEerror">error</a> -> string</code></pre><div class="info ">
+<code class="code">error_to_string e</code> converts error <code class="code">e</code> to its string representation.<br>
+</div>
+
+<pre><span id="EXCEPTIONFailure"><span class="keyword">exception</span> Failure</span> <span class="keyword">of</span> <code class="type"><a href="Protobuf.Decoder.html#TYPEerror">error</a></code></pre>
+
+<pre><span id="TYPEt"><span class="keyword">type</span> <code class="type"></code>t</span> </pre>
+<div class="info ">
+Type of wire format decoders.<br>
+</div>
+
+
+<pre><span id="VALof_bytes"><span class="keyword">val</span> of_bytes</span> : <code class="type">bytes -> <a href="Protobuf.Decoder.html#TYPEt">t</a></code></pre><div class="info ">
+<code class="code">of_bytes b</code> creates a decoder positioned at start of bytes <code class="code">b</code>.<br>
+</div>
+
+<pre><span id="VALof_string"><span class="keyword">val</span> of_string</span> : <code class="type">string -> <a href="Protobuf.Decoder.html#TYPEt">t</a></code></pre><div class="info ">
+<code class="code">of_string s</code> creates a decoder positioned at start of string <code class="code">s</code>.<br>
+</div>
+
+<pre><span id="VALat_end"><span class="keyword">val</span> at_end</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> bool</code></pre><div class="info ">
+<code class="code">at_end d</code> returns <code class="code"><span class="keyword">true</span></code> if <code class="code">d</code> has exhausted its input, and <code class="code"><span class="keyword">false</span></code>
+      otherwise.<br>
+</div>
+
+<pre><span id="VALskip"><span class="keyword">val</span> skip</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> <a href="Protobuf.html#TYPEpayload_kind">Protobuf.payload_kind</a> -> unit</code></pre><div class="info ">
+<code class="code">skip d pk</code> skips the next value of kind <code class="code">pk</code> in <code class="code">d</code>.
+      If skipping the value would exhaust input of <code class="code">d</code>, raises
+      <code class="code"><span class="constructor">Encoding_error</span> <span class="constructor">Incomplete</span></code>.<br>
+</div>
+
+<pre><span id="VALvarint"><span class="keyword">val</span> varint</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> int64</code></pre><div class="info ">
+<code class="code">varint d</code> reads a varint from <code class="code">d</code>.
+      If <code class="code">d</code> has exhausted its input, raises <code class="code"><span class="constructor">Failure</span> <span class="constructor">Incomplete</span></code>.<br>
+</div>
+
+<pre><span id="VALzigzag"><span class="keyword">val</span> zigzag</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> int64</code></pre><div class="info ">
+<code class="code">zigzag d</code> reads a varint from <code class="code">d</code> and zigzag-decodes it.
+      If <code class="code">d</code> has exhausted its input, raises <code class="code"><span class="constructor">Failure</span> <span class="constructor">Incomplete</span></code>.<br>
+</div>
+
+<pre><span id="VALbits32"><span class="keyword">val</span> bits32</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> int32</code></pre><div class="info ">
+<code class="code">bits32 d</code> reads four bytes from <code class="code">d</code>.
+      If <code class="code">d</code> has exhausted its input, raises <code class="code"><span class="constructor">Failure</span> <span class="constructor">Incomplete</span></code>.<br>
+</div>
+
+<pre><span id="VALbits64"><span class="keyword">val</span> bits64</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> int64</code></pre><div class="info ">
+<code class="code">bits64 d</code> reads eight bytes from <code class="code">d</code>.
+      If <code class="code">d</code> has exhausted its input, raises <code class="code"><span class="constructor">Failure</span> <span class="constructor">Incomplete</span></code>.<br>
+</div>
+
+<pre><span id="VALbytes"><span class="keyword">val</span> bytes</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> bytes</code></pre><div class="info ">
+<code class="code">bytes d</code> reads a varint indicating length and then that much
+      bytes from <code class="code">d</code>.
+      If <code class="code">d</code> has exhausted its input, raises <code class="code"><span class="constructor">Failure</span> <span class="constructor">Incomplete</span></code>.<br>
+</div>
+
+<pre><span id="VALnested"><span class="keyword">val</span> nested</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> <a href="Protobuf.Decoder.html#TYPEt">t</a></code></pre><div class="info ">
+<code class="code">nested d</code> returns a decoder for a message nested in <code class="code">d</code>.
+      If reading the message would exhaust input of <code class="code">d</code>, raises
+      <code class="code"><span class="constructor">Failure</span> <span class="constructor">Incomplete</span></code>.<br>
+</div>
+
+<pre><span id="VALkey"><span class="keyword">val</span> key</span> : <code class="type"><a href="Protobuf.Decoder.html#TYPEt">t</a> -> (int * <a href="Protobuf.html#TYPEpayload_kind">Protobuf.payload_kind</a>) option</code></pre><div class="info ">
+<code class="code">key d</code> reads a key and a payload kind from <code class="code">d</code>.
+      If <code class="code">d</code> has exhausted its input when the function is called, returns <code class="code"><span class="constructor">None</span></code>.
+      If <code class="code">d</code> has exhausted its input while reading, raises
+      <code class="code"><span class="constructor">Failure</span> <span class="constructor">Incomplete</span></code>.
+      If the payload kind is unknown, raises <code class="code"><span class="constructor">Failure</span> <span class="constructor">Malformed_field</span></code>.<br>
+</div>
+
+<pre><span id="VALdecode_exn"><span class="keyword">val</span> decode_exn</span> : <code class="type">(<a href="Protobuf.Decoder.html#TYPEt">t</a> -> 'a) -> bytes -> 'a</code></pre><div class="info ">
+<code class="code">decode_exn f b</code> ≡ <code class="code">f (create b)</code>.<br>
+</div>
+
+<pre><span id="VALdecode"><span class="keyword">val</span> decode</span> : <code class="type">(<a href="Protobuf.Decoder.html#TYPEt">t</a> -> 'a) -> bytes -> 'a option</code></pre><div class="info ">
+<code class="code">decode f b</code> ≡ <code class="code"><span class="keyword">try</span> <span class="constructor">Some</span> (decode_exn f b) <span class="keyword">with</span> <span class="constructor">Failure</span> _ <span class="keywordsign">-&gt;</span> <span class="constructor">None</span></code><br>
+</div>
+
+<pre><span id="VALint_of_int32"><span class="keyword">val</span> int_of_int32</span> : <code class="type">string -> int32 -> int</code></pre><div class="info ">
+<code class="code">int_of_int32 fld v</code> returns <code class="code">v</code> truncated to <code class="code">int</code>.
+      If the value doesn't fit in the range of <code class="code">int</code>, raises
+      <code class="code"><span class="constructor">Failure</span> (<span class="constructor">Overflow</span> fld)</code>.<br>
+</div>
+
+<pre><span id="VALint_of_int64"><span class="keyword">val</span> int_of_int64</span> : <code class="type">string -> int64 -> int</code></pre><div class="info ">
+<code class="code">int_of_int64 fld v</code> returns <code class="code">v</code> truncated to <code class="code">int</code>.
+      If the value doesn't fit in the range of <code class="code">int</code>, raises
+      <code class="code"><span class="constructor">Failure</span> (<span class="constructor">Overflow</span> fld)</code>.<br>
+</div>
+
+<pre><span id="VALint32_of_int64"><span class="keyword">val</span> int32_of_int64</span> : <code class="type">string -> int64 -> int32</code></pre><div class="info ">
+<code class="code">int32_of_int64 fld v</code> returns <code class="code">v</code> truncated to <code class="code">int32</code>.
+      If the value doesn't fit in the range of <code class="code">int32</code>, raises
+      <code class="code"><span class="constructor">Failure</span> (<span class="constructor">Overflow</span> fld)</code>.<br>
+</div>
+
+<pre><span id="VALbool_of_int64"><span class="keyword">val</span> bool_of_int64</span> : <code class="type">string -> int64 -> bool</code></pre><div class="info ">
+<code class="code">bool_of_int64 fld v</code> returns <code class="code">v</code> truncated to <code class="code">bool</code>.
+      If the value doesn't fit in the range of <code class="code">bool</code>, raises
+      <code class="code"><span class="constructor">Failure</span> (<span class="constructor">Overflow</span> fld)</code>.<br>
+</div>
+</body></html>
