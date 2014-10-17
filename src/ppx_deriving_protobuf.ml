@@ -165,10 +165,10 @@ let () =
     | Error err -> Some (describe_error err)
     | _ -> None)
 
-let prefix = "protobuf"
+let deriver = "protobuf"
 
 let pb_key_of_attrs attrs =
-  match Ppx_deriving.attr ~prefix "key" attrs with
+  match Ppx_deriving.attr ~deriver "key" attrs with
   | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Const_int key) }]]]) ->
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
       raise (Error (Pberr_key_invalid (loc, key)));
@@ -177,7 +177,7 @@ let pb_key_of_attrs attrs =
   | None -> None
 
 let pb_encoding_of_attrs attrs =
-  match Ppx_deriving.attr ~prefix "encoding" attrs with
+  match Ppx_deriving.attr ~deriver "encoding" attrs with
   | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_variant (kind, None) }]]]) ->
     begin match pb_encoding_of_string kind with
     | Some x -> Some x
@@ -187,19 +187,19 @@ let pb_encoding_of_attrs attrs =
   | None -> None
 
 let bare_of_attrs attrs =
-  match Ppx_deriving.attr ~prefix "bare" attrs with
+  match Ppx_deriving.attr ~deriver "bare" attrs with
   | Some (_, PStr []) -> true
   | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Bare)))
   | None -> false
 
 let default_of_attrs attrs =
-  match Ppx_deriving.attr ~prefix "default" attrs with
+  match Ppx_deriving.attr ~deriver "default" attrs with
   | Some (_, PStr [[%stri [%e? expr]]]) -> Some expr
   | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Default)))
   | None -> None
 
 let packed_of_attrs attrs =
-  match Ppx_deriving.attr ~prefix "packed" attrs with
+  match Ppx_deriving.attr ~deriver "packed" attrs with
   | Some (_, PStr []) -> true
   | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Packed)))
   | None -> false
@@ -938,13 +938,18 @@ let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
    Sig.value (Val.mk (mknoloc
       (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype)) writer_typ)]
 
+let parse_options options =
+  options |> List.iter (fun (name, expr) ->
+    match name with
+    | _ -> raise_errorf ~loc:expr.pexp_loc "%s does not support option %s" deriver name)
+
 let () =
   Ppx_deriving.(register "protobuf" {
     core_type = None;
     structure = (fun ~options ~path type_decls ->
-      assert (options = []);
+      parse_options options;
       [Str.value Recursive (List.concat (List.map (str_of_type ~options ~path) type_decls))]);
     signature = (fun ~options ~path type_decls ->
-      assert (options = []);
+      parse_options options;
       List.concat (List.map (sig_of_type ~options ~path) type_decls));
   })
