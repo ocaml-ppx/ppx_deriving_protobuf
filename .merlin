@@ -1,3 +1,1 @@
-PKG compiler-libs.common
-PKG ppx_deriving.api
-PKG oUnit
+PKG compiler-libs.common ppx_deriving.api oUnit

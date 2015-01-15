@@ -944,12 +944,12 @@ let parse_options options =
     | _ -> raise_errorf ~loc:expr.pexp_loc "%s does not support option %s" deriver name)
 
 let () =
-  Ppx_deriving.(register "protobuf" {
-    core_type = None;
-    structure = (fun ~options ~path type_decls ->
+  Ppx_deriving.(register (create "protobuf"
+    ~type_decl_str:(fun ~options ~path type_decls ->
       parse_options options;
-      [Str.value Recursive (List.concat (List.map (str_of_type ~options ~path) type_decls))]);
-    signature = (fun ~options ~path type_decls ->
+      [Str.value Recursive (List.concat (List.map (str_of_type ~options ~path) type_decls))])
+    ~type_decl_sig:(fun ~options ~path type_decls ->
       parse_options options;
-      List.concat (List.map (sig_of_type ~options ~path) type_decls));
-  })
+      List.concat (List.map (sig_of_type ~options ~path) type_decls))
+    ()
+  ))
