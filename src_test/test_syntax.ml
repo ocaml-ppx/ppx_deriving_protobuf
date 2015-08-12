@@ -152,7 +152,7 @@ let test_nested ctxt =
                    { r2a = { r1a = 300; r1b = "spartans" } }
 
 type r3 = {
-  r3a : (int [@encoding `bits32] * string) [@key 1];
+  r3a : (int [@encoding `bits32]) * string [@key 1];
 } [@@deriving protobuf]
 let test_imm_tuple ctxt =
   let printer { r3a = a, b } = Printf.sprintf "{ r3a = %d, %s } }" a b in
@@ -163,8 +163,8 @@ let test_imm_tuple ctxt =
 type v1 =
 | V1A [@key 1]
 | V1B [@key 2]
-| V1C [@key 3] of int
-| V1D [@key 4] of string * string
+| V1C of int [@key 3]
+| V1D of string * string [@key 4]
 [@@deriving protobuf]
 let test_variant ctxt =
   let printer v =
@@ -206,8 +206,8 @@ let test_tvar ctxt =
                    "\x0a\x02\x08\x01" { r5a = 1 }
 
 type 'a mylist =
-| Nil  [@key 1]
-| Cons [@key 2] of 'a * 'a mylist
+| Nil [@key 1]
+| Cons of 'a * 'a mylist [@key 2]
 [@@deriving protobuf]
 let test_mylist ctxt =
   let rec printer f v =
@@ -223,7 +223,11 @@ let test_mylist ctxt =
                     "\x0a\x02\x08\x03\x12\x02\x08\x01")
                    (Cons (1, (Cons (2, (Cons (3, Nil))))))
 
-type v3 = [ `V3A [@key 1] | `V3B [@key 2] of int | `V3C [@key 3] of string * string ]
+type v3 = [
+  `V3A [@key 1]
+| `V3B of int [@key 2]
+| `V3C of string * string [@key 3]
+]
 [@@deriving protobuf]
 let test_poly_variant ctxt =
   let printer v =
@@ -274,9 +278,9 @@ let test_imm_pv_bare ctxt =
                    "\x08\x01\x10\x2a" { r8a = `Request; r8b = 42 }
 
 type v5 =
-| V5A [@key 1] of int option
-| V5B [@key 2] of string list
-| V5C [@key 3] of int array
+| V5A of int option [@key 1]
+| V5B of string list [@key 2]
+| V5C of int array [@key 3]
 | V5D [@key 4]
 [@@deriving protobuf]
 let test_variant_optrep ctxt =

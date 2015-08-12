@@ -1,6 +1,11 @@
 Changelog
 =========
 
+2.2
+---
+
+  * Update to accomodate syntactic changes in OCaml 4.02.2.
+
 2.1
 ---
 
