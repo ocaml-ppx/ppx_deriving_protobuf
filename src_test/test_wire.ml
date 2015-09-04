@@ -94,7 +94,7 @@ let test_overflow ctxt =
   else
     assert_equal (-1) (Decoder.int_of_int32 "" 0xffffffffl);
   assert_raises Decoder.(Failure (Overflow ""))
-                (fun () -> Decoder.int_of_int64 "" 0xffffffffffffffffL);
+                (fun () -> Decoder.int_of_int64 "" 0x7fffffffffffffffL);
   assert_raises Decoder.(Failure (Overflow ""))
                 (fun () -> Decoder.int32_of_int64 "" 0x1ffffffffL);
   assert_raises Decoder.(Failure (Overflow ""))
@@ -106,8 +106,12 @@ let test_overflow ctxt =
                 (fun () -> Encoder.int32_of_int64 "" 0x1ffffffffL);
   ()
 
+let test_truncate ctxt =
+  assert_equal (-1) (Decoder.int_of_int64 "" (-1L))
+
 let suite = "Test wire format" >::: [
     "test_decoder"  >:: test_decoder;
     "test_encoder"  >:: test_encoder;
     "test_overflow" >:: test_overflow;
+    "test_truncate" >:: test_truncate;
   ]

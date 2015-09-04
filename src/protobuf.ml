@@ -4,6 +4,14 @@ type payload_kind =
 | Bits64
 | Bytes
 
+let min_int_as_int32, max_int_as_int32 = Int32.of_int min_int, Int32.of_int max_int
+let min_int_as_int64, max_int_as_int64 = Int64.of_int min_int, Int64.of_int max_int
+let min_int32_as_int64, max_int32_as_int64 =
+  Int64.of_int32 Int32.max_int, Int64.of_int32 Int32.max_int
+let min_int32_as_int, max_int32_as_int =
+  if Sys.word_size = 64 then Int32.to_int Int32.max_int, Int32.to_int Int32.max_int
+  else 0, 0
+
 module Decoder = struct
   type error =
   | Incomplete
@@ -44,17 +52,17 @@ module Decoder = struct
       | _         -> None)
 
   let int_of_int32 fld v =
-    if Sys.word_size = 32 && (Int32.shift_right v 31) <> Int32.zero then
+    if Sys.word_size = 32 && (v < min_int_as_int32 || v > max_int_as_int32) then
       raise (Failure (Overflow fld));
     Int32.to_int v
 
   let int_of_int64 fld v =
-    if (Int64.shift_right v 63) <> Int64.zero then
+    if (v < min_int_as_int64 || v > max_int_as_int64) then
       raise (Failure (Overflow fld));
     Int64.to_int v
 
   let int32_of_int64 fld v =
-    if (Int64.shift_right v 32) <> Int64.zero then
+    if (v < min_int32_as_int64 || v > max_int32_as_int64) then
       raise (Failure (Overflow fld));
     Int64.to_int32 v
 
@@ -274,12 +282,12 @@ module Encoder = struct
     smallint (pk' lor (k lsl 3)) e
 
   let int32_of_int64 fld v =
-    if (Int64.shift_right v 32) <> Int64.zero then
+    if (v < min_int32_as_int64 || v > max_int32_as_int64) then
       raise (Failure (Overflow fld));
     Int64.to_int32 v
 
   let int32_of_int fld v =
-    if Sys.word_size = 64 && (v lsr 32) <> 0 then
+    if Sys.word_size = 64 && (v < min_int32_as_int || v > max_int32_as_int) then
       raise (Failure (Overflow fld));
     Int32.of_int v
 end
