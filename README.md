@@ -283,9 +283,9 @@ message Variant {
 
 ``` ocaml
 type variant =
-| A [@key 1]
-| B [@key 2] of int
-| C [@key 3] of string * string
+| A                    [@key 1]
+| B of int             [@key 2]
+| C of string * string [@key 3]
 [@@deriving protobuf]
 ```
 
@@ -413,8 +413,8 @@ Consider this example:
 
 ``` ocaml
 type 'a mylist =
-| Nil  [@key 1]
-| Cons [@key 2] of 'a * 'a mylist
+| Nil                    [@key 1]
+| Cons of 'a * 'a mylist [@key 2]
 [@@deriving protobuf]
 ```
 
