@@ -7,9 +7,9 @@ type payload_kind =
 let min_int_as_int32, max_int_as_int32 = Int32.of_int min_int, Int32.of_int max_int
 let min_int_as_int64, max_int_as_int64 = Int64.of_int min_int, Int64.of_int max_int
 let min_int32_as_int64, max_int32_as_int64 =
-  Int64.of_int32 Int32.max_int, Int64.of_int32 Int32.max_int
+  Int64.of_int32 Int32.min_int, Int64.of_int32 Int32.max_int
 let min_int32_as_int, max_int32_as_int =
-  if Sys.word_size = 64 then Int32.to_int Int32.max_int, Int32.to_int Int32.max_int
+  if Sys.word_size = 64 then Int32.to_int Int32.min_int, Int32.to_int Int32.max_int
   else 0, 0
 
 module Decoder = struct
