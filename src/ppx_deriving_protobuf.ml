@@ -398,7 +398,7 @@ let derive_reader_bare base_path fields ptype =
       Exp.match_ [%expr Protobuf.Decoder.varint decoder]
                  (mk_variant_cases constrs) in
     Some (Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf_bare") ptype))
-                [%expr fun decoder -> [%e matcher]])
+                [%expr fun decoder -> [%e Ppx_deriving.sanitize matcher]])
   in
   match ptype with
   | { ptype_kind = Ptype_variant constrs } when
@@ -663,7 +663,8 @@ let rec derive_reader base_path fields ptype =
     mk_imm_readers fields
   in
   Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf") ptype))
-        (Ppx_deriving.poly_fun_of_type_decl ptype [%expr fun decoder -> [%e read]])
+        (Ppx_deriving.poly_fun_of_type_decl ptype
+          [%expr fun decoder -> [%e Ppx_deriving.sanitize read]])
 
 let derive_writer_bare fields ptype =
   let mk_variant mk_pconstr constrs =
@@ -679,7 +680,7 @@ let derive_writer_bare fields ptype =
     let matcher = Exp.match_ [%expr value] (mk_variant_cases constrs) in
     let writer  = [%expr Protobuf.Encoder.varint [%e matcher] encoder] in
     Some (Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf_bare") ptype))
-                [%expr fun value encoder -> [%e writer]])
+                [%expr fun value encoder -> [%e Ppx_deriving.sanitize writer]])
   in
   match ptype with
   | { ptype_kind = Ptype_variant constrs } when
@@ -905,7 +906,8 @@ let rec derive_writer fields ptype =
   in
   let write = mk_deconstructor fields |> mk_imm_writers fields in
   Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype))
-        (Ppx_deriving.poly_fun_of_type_decl ptype [%expr fun value encoder -> [%e write]])
+        (Ppx_deriving.poly_fun_of_type_decl ptype
+          [%expr fun value encoder -> [%e Ppx_deriving.sanitize write]])
 
 let str_of_type ~options ~path ({ ptype_name = { txt = name }; ptype_loc } as ptype) =
   let path   = path @ [name] in
