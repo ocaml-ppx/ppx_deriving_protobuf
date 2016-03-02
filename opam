@@ -21,8 +21,9 @@ build-doc: [
   make "doc"
 ]
 depends: [
-  "ppx_deriving" {>= "3.2" & < "4.0"}
+  "ocamlbuild"   {build}
   "ocamlfind"    {build}
+  "ppx_deriving" {>= "3.2" & < "4.0"}
   "ounit"        {test}
   "uint"         {test}
 ]
