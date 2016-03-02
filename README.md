@@ -27,7 +27,7 @@ Syntax
 
 _deriving protobuf_ is not a replacement for _protoc_ and it does not attempt to generate
 code based on _protoc_ definitions. Instead, it generates code based on OCaml type
-definitions.
+definitions. It can also generate input files for _protoc_.
 
 _deriving protobuf_-generated serializers are derived from the structure of the type
 and several attributes: `@key`, `@encoding`, `@bare` and `@default`. Generation
@@ -571,6 +571,174 @@ without losing the ability to decode messages from existing senders:
     **with more than two arguments**.
   * Replacing an integer type with a wider one while preserving the encoding
     (it's a good idea to add the `[@encoding]` annotation explicitly).
+
+Protoc export
+-------------
+
+_deriving protobuf_ can export message types in _proto2_ language, the format
+that _protoc_ accepts; _protoc_ version 2.6 or later is required.
+
+To enable _protoc_ export, pass a `protoc` option to _deriving protobuf_:
+
+```
+(* foo.ml *)
+type msg = ... [@@deriving protobuf { protoc }]
+```
+
+Compiling this file will create a file called `Foo.protoc` (note the capitalization)
+in a directory adjacent to `foo.ml`; if you are using ocamlbuild and `foo.ml`
+is located in directory `src/`, the file will be generated at `_build/src/Foo.protoc`.
+This can be customized by providing a path explicitly, e.g.
+`[@@deriving protobuf { protoc = "Bar.protoc" }]`; the path is interpreted
+relative to the source file.
+
+The mapping between OCaml types and _protoc_ messages is straightforward.
+
+OCaml modules become _protoc_ packages with the same name.
+A nested module, e.g. `module Bar` in our `foo.ml`, becomes a nested package,
+`Foo.Bar`; it will be emitted in a file `Foo.Bar.protoc`, placed adjacent to
+`Foo.protoc`, since _protoc_ requires every package to reside in its own file.
+
+OCaml records and their fields become _protoc_ messages and fields with
+the same name:
+
+``` ocaml
+type msg = {
+  name:  string [@key 1];
+  value: int    [@key 2];
+} [@@deriving protobuf { protoc }]
+```
+
+``` protoc
+message msg {
+  required string name = 1;
+  required int64 value = 2;
+}
+```
+
+OCaml variants and their constructors become _protoc_ messages and fields
+with the same name; additionally generated are a nested enum called
+`_tag` whose constants have the same name as constructors with `_tag`
+appended, and a field named `tag` with the type `_tag`:
+
+``` ocaml
+type msg =
+| A [@key 1]
+| B of string [@key 2]
+[@@deriving protobuf { protoc }]
+```
+
+``` protoc
+message msg {
+  enum _tag {
+    A_tag = 1;
+    B_tag = 2;
+  }
+
+  required _tag tag = 1;
+  oneof value {
+    string B = 3;
+  }
+}
+```
+
+OCaml tuples become _protoc_ messages with the same name whose fields
+are called `_N` with `N` being the field index:
+
+``` ocaml
+type msg = int * string
+[@@deriving protobuf { protoc }]
+```
+
+``` protoc
+message msg {
+  required int64 _0 = 1;
+  required string _1 = 2;
+}
+```
+
+OCaml aliases become _protoc_ messages with one field called `_`:
+
+``` ocaml
+type msg = int
+[@@deriving protobuf { protoc }]
+```
+
+``` protoc
+message msg {
+  required int64 _ = 1;
+}
+```
+
+Sometimes, a single toplevel OCaml type definition has to be translated
+into several messages, e.g. when a field or a constructor contains a tuple
+or a polymorphic variant. In this case, such messages become nested messages
+whose name is the name of the field or constructor with `_` prepended:
+
+``` ocaml
+type msg = {
+  field: int * string [@key 1]
+}
+[@@deriving protobuf { protoc }]
+```
+
+``` protoc
+message msg {
+  message _field {
+    required int64 _0 = 1;
+    required string _1 = 2;
+  }
+
+  required _field field = 1;
+}
+```
+
+Normally, when a type from another module is referenced, _deriving protobuf_
+automatically generates the corresponding _protoc_ `import` directive:
+
+``` ocaml
+type imported = Other.msg
+[@@deriving protobuf { protoc }]
+```
+
+``` protoc
+import "Other.protoc";
+message imported {
+  required Other.msg _ = 1;
+}
+```
+
+However, when a type is referenced that was defined in a module defined earlier
+in the same file, the produced `import` directive is incorrect.
+(_deriving protobuf_ does not have an accurate model of OCaml's module scoping.)
+In this case, the `protoc_import` option can help:
+
+``` ocaml
+(* foo.ml *)
+module Bar = struct
+  type msg = int [@@deriving protobuf { protoc }]
+end
+
+type alias = Bar.msg
+[@@deriving protobuf { protoc; protoc_import = ["Foo.Bar.protoc"] }]
+```
+
+``` protoc
+// Foo.protoc
+package Foo;
+import "Foo.Bar.protoc";
+message alias {
+  required Bar.msg _ = 1;
+}
+```
+
+``` protoc
+// Foo.Bar.protoc
+package Foo.Bar;
+message msg {
+  required int64 _ = 1;
+}
+```
 
 Compatibility
 -------------

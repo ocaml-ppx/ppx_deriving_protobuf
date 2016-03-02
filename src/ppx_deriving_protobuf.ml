@@ -33,6 +33,7 @@ and pb_kind =
 | Pbk_repeated
 and pb_field = {
   pbf_name    : string;
+  pbf_extname : string;
   pbf_path    : string list;
   pbf_key     : int;
   pbf_enc     : pb_encoding;
@@ -54,6 +55,8 @@ type error =
 | Pberr_wrong_tparm   of core_type
 | Pberr_no_conversion of Location.t * pb_type * pb_encoding
 | Pberr_packed_bytes  of Location.t
+| Pberr_dumb_protoc   of Location.t
+| Pberr_ocaml_expr    of Location.t
 
 exception Error of error
 
@@ -158,6 +161,10 @@ let describe_error error =
                       (string_of_pb_encoding enc) (string_of_pb_type kind)
   | Pberr_packed_bytes loc ->
     errorf ~loc "Only fields with varint, bits32 or bits64 encoding may be packed"
+  | Pberr_dumb_protoc loc ->
+    errorf ~loc "Parametric types are not supported when exporting to protoc"
+  | Pberr_ocaml_expr loc ->
+    errorf ~loc "Nontrivial OCaml expressions cannot be exported to protoc"
 
 let () =
   Location.register_error_of_exn (fun exn ->
@@ -205,19 +212,22 @@ let packed_of_attrs attrs =
   | None -> false
 
 let fields_of_ptype base_path ptype =
-  let rec field_of_ptyp pbf_name pbf_path pbf_key pbf_kind ptyp =
+  let rec field_of_ptyp pbf_name pbf_extname pbf_path pbf_key pbf_kind ptyp =
     match ptyp with
     | [%type: [%t? arg] option] ->
       begin match pbf_kind with
-      | Pbk_required -> field_of_ptyp pbf_name pbf_path pbf_key Pbk_optional
-                          { arg with ptyp_attributes = ptyp.ptyp_attributes @ arg.ptyp_attributes }
+      | Pbk_required ->
+        field_of_ptyp pbf_name pbf_extname pbf_path pbf_key Pbk_optional
+          { arg with ptyp_attributes = ptyp.ptyp_attributes @ arg.ptyp_attributes }
       | _ -> raise (Error (Pberr_wrong_ty ptyp))
       end
     | [%type: [%t? arg] array] | [%type: [%t? arg] list] ->
       begin match pbf_kind with
       | Pbk_required ->
-        let { pbf_enc } as field = field_of_ptyp pbf_name pbf_path pbf_key Pbk_repeated
-                      { arg with ptyp_attributes = ptyp.ptyp_attributes @ arg.ptyp_attributes } in
+        let { pbf_enc } as field =
+          field_of_ptyp pbf_name pbf_extname pbf_path pbf_key Pbk_repeated
+            { arg with ptyp_attributes = ptyp.ptyp_attributes @ arg.ptyp_attributes }
+        in
         let pbf_enc =
           if packed_of_attrs ptyp.ptyp_attributes then Pbe_packed pbf_enc else pbf_enc
         in
@@ -244,7 +254,7 @@ let fields_of_ptype base_path ptype =
         | Ptyp_var var   -> Pbe_bytes, Pbt_poly var
         | _ -> assert false
       in
-      { pbf_name; pbf_key; pbf_kind; pbf_path; pbf_type; pbf_enc;
+      { pbf_name; pbf_extname; pbf_key; pbf_kind; pbf_path; pbf_type; pbf_enc;
         pbf_loc     = ptyp_loc;
         pbf_default = default_of_attrs attrs; }
     | { ptyp_desc = Ptyp_constr ({ txt = lid }, args); ptyp_attributes = attrs; ptyp_loc; } ->
@@ -291,14 +301,14 @@ let fields_of_ptype base_path ptype =
       | Pbt_float, (Pbe_bits32 | Pbe_bits64)
       | (Pbt_string | Pbt_bytes), Pbe_bytes
       | Pbt_nested _, (Pbe_bytes | Pbe_varint) ->
-        { pbf_name; pbf_key; pbf_enc; pbf_type; pbf_kind; pbf_path;
+        { pbf_name; pbf_extname; pbf_key; pbf_enc; pbf_type; pbf_kind; pbf_path;
           pbf_loc     = ptyp_loc;
           pbf_default = default_of_attrs attrs }
       | _ ->
         raise (Error (Pberr_no_conversion (ptyp_loc, pbf_type, pbf_enc)))
       end
     | { ptyp_desc = Ptyp_alias (ptyp', _) } ->
-      field_of_ptyp pbf_name pbf_path pbf_key pbf_kind ptyp'
+      field_of_ptyp pbf_name pbf_extname pbf_path pbf_key pbf_kind ptyp'
     | ptyp -> raise (Error (Pberr_wrong_ty ptyp))
   in
   let fields_of_variant loc constrs =
@@ -313,6 +323,7 @@ let fields_of_ptype base_path ptype =
         if pcd != pcd' && key = key' then
           raise (Error (Pberr_key_duplicate (key, loc', loc)))));
     { pbf_name    = "variant";
+      pbf_extname = "tag";
       pbf_path    = base_path;
       pbf_key     = 1;
       pbf_enc     = Pbe_varint;
@@ -331,7 +342,7 @@ let fields_of_ptype base_path ptype =
       | Some ptyp ->
         let key = 1 + (match pb_key_of_attrs attrs with
                        | Some key -> key | None -> assert false) in
-        Some (field_of_ptyp (Printf.sprintf "constr_%s" name)
+        Some (field_of_ptyp (Printf.sprintf "constr_%s" name) name
                             (base_path @ [name]) (Some key) Pbk_required ptyp)
       | None -> None))
   in
@@ -339,8 +350,8 @@ let fields_of_ptype base_path ptype =
     match ptype with
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
       ptyps |> List.mapi (fun i ptyp ->
-        field_of_ptyp (Printf.sprintf "elem_%d" i) (base_path @ [string_of_int i])
-                      (Some (i + 1)) Pbk_required ptyp)
+        field_of_ptyp (Printf.sprintf "elem_%d" i) (Printf.sprintf "_%d" i)
+                      (base_path @ [string_of_int i]) (Some (i + 1)) Pbk_required ptyp)
     | { ptype_kind = Ptype_abstract;
         ptype_manifest = Some ({ ptyp_desc = Ptyp_variant (rows, _, _); ptyp_loc } as ptyp);
         ptype_loc; } ->
@@ -351,14 +362,14 @@ let fields_of_ptype base_path ptype =
         | _ -> raise (Error (Pberr_wrong_ty ptyp))) |>
       fields_of_variant ptype_loc
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
-      [field_of_ptyp "alias" base_path (Some 1) Pbk_required ptyp]
+      [field_of_ptyp "alias" "_" base_path (Some 1) Pbk_required ptyp]
     | { ptype_kind = Ptype_abstract; ptype_manifest = None } ->
       raise (Error (Pberr_abstract ptype))
     | { ptype_kind = Ptype_open } ->
       raise (Error (Pberr_open ptype))
     | { ptype_kind = Ptype_record fields } ->
       fields |> List.mapi (fun i { pld_name = { txt = name }; pld_type; pld_attributes; } ->
-        field_of_ptyp ("field_" ^ name) (base_path @ [name]) None Pbk_required
+        field_of_ptyp ("field_" ^ name) name (base_path @ [name]) None Pbk_required
                       { pld_type with ptyp_attributes = pld_attributes @ pld_type.ptyp_attributes })
     | { ptype_kind = Ptype_variant constrs; ptype_loc } ->
       constrs |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes; pcd_loc; } ->
@@ -407,9 +418,9 @@ let derive_reader_bare base_path fields ptype =
 let rec derive_reader base_path fields ptype =
   let rec mk_imm_readers fields k =
     match fields with
-    | { pbf_type = Pbt_imm ty; pbf_name; pbf_path; } :: rest ->
+    | { pbf_type = Pbt_imm ptyp; pbf_name; pbf_path; } :: rest ->
       (* Manufacture a structure just for this immediate *)
-      let ptype  = Type.mk ~manifest:ty (mkloc ("_" ^ pbf_name) !default_loc) in
+      let ptype  = Type.mk ~manifest:ptyp (mkloc ("_" ^ pbf_name) !default_loc) in
       (* Order is important, derive_reader does less checks than derive_reader_bare. *)
       let reader = derive_reader pbf_path (fields_of_ptype pbf_path ptype) ptype in
       Exp.let_ Nonrecursive
@@ -688,9 +699,9 @@ let derive_writer_bare fields ptype =
 let rec derive_writer fields ptype =
   let rec mk_imm_writers fields k =
     match fields with
-    | { pbf_type = Pbt_imm ty; pbf_name; pbf_path; } :: rest ->
+    | { pbf_type = Pbt_imm ptyp; pbf_name; pbf_path; } :: rest ->
       (* Manufacture a structure just for this immediate *)
-      let ptype = Type.mk ~manifest:ty (mknoloc ("_" ^ pbf_name)) in
+      let ptype = Type.mk ~manifest:ptyp (mknoloc ("_" ^ pbf_name)) in
       Exp.let_ Nonrecursive
                ((derive_writer (fields_of_ptype pbf_path ptype) ptype) ::
                 (match derive_writer_bare fields ptype with
@@ -910,17 +921,17 @@ let str_of_type ~options ~path ({ ptype_name = { txt = name }; ptype_loc } as pt
   in
   reader @ writer
 
+let has_bare ptype =
+  match ptype with
+  | { ptype_kind = Ptype_variant constrs } when
+      List.for_all (fun { pcd_args } -> pcd_args = []) constrs -> true
+  | { ptype_kind = Ptype_abstract;
+      ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
+        List.for_all (fun row_field ->
+          match row_field with Rtag (_, _, _, []) -> true | _ -> false) rows -> true
+  | _ -> false
+
 let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
-  let has_bare =
-    match ptype with
-    | { ptype_kind = Ptype_variant constrs } when
-        List.for_all (fun { pcd_args } -> pcd_args = []) constrs -> true
-    | { ptype_kind = Ptype_abstract;
-        ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
-          List.for_all (fun row_field ->
-            match row_field with Rtag (_, _, _, []) -> true | _ -> false) rows -> true
-    | _ -> false
-  in
   let typ = Ppx_deriving.core_type_of_type_decl ptype in
   let reader_typ = Ppx_deriving.poly_arrow_of_type_decl
     (fun var -> [%type: Protobuf.Decoder.t -> [%t var]]) ptype
@@ -929,7 +940,7 @@ let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
     (fun var -> [%type: [%t var] -> Protobuf.Encoder.t -> unit]) ptype
     [%type: [%t typ] -> Protobuf.Encoder.t -> unit]
   in
-  (if not has_bare then [] else
+  (if not (has_bare ptype) then [] else
     [Sig.value (Val.mk (mknoloc
         (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf_bare") ptype)) reader_typ);
      Sig.value (Val.mk (mknoloc
@@ -939,18 +950,183 @@ let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
    Sig.value (Val.mk (mknoloc
       (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype)) writer_typ)]
 
-let parse_options options =
+module LongidentSet = Set.Make(struct
+  type t = Longident.t
+  let compare = compare
+end)
+
+let rec write_protoc ~fmt ~path:base_path ?(import=[])
+                     ({ ptype_name = { txt = name; loc } } as ptype) =
+  let path   = base_path @ [name] in
+  let fields = fields_of_ptype path ptype in
+  Format.fprintf fmt "@,// %s:%d" loc.loc_start.Lexing.pos_fname loc.loc_end.Lexing.pos_lnum;
+  (* import all external definitions *)
+  if (List.length import) = 0 then
+    let depends = ref LongidentSet.empty in
+    fields |> List.iter (fun field ->
+      match field.pbf_type with
+      | Pbt_nested ([], Ldot (lid, _)) ->
+        begin try
+          ignore (LongidentSet.find lid !depends)
+        with Not_found ->
+          depends := LongidentSet.add lid !depends;
+          Format.fprintf fmt "@,import \"%s.protoc\";" (String.concat "." (Longident.flatten lid))
+        end
+      | _ -> ())
+  else
+    import |> List.iter (Format.fprintf fmt "@,import \"%s\";");
+  (* emit a bare variant form *)
+  Format.fprintf fmt "@,@[<v 2>message %s {" name;
+  fields |> List.iter (fun field ->
+    let subname = "_" ^ field.pbf_extname in
+    match field.pbf_type with
+    | Pbt_variant variants ->
+      Format.fprintf fmt "@,@[<v 2>enum %s {" subname;
+      variants |> List.iter (fun (key, name) ->
+        Format.fprintf fmt "@,%s_tag = %d;" name key);
+      Format.fprintf fmt "@]@,}@,";
+    | Pbt_imm ptyp ->
+      (* Manufacture a structure just for this immediate *)
+      let ptype = Type.mk ~manifest:ptyp (mkloc subname !default_loc) in
+      write_protoc ~fmt ~path:(path @ [field.pbf_name]) ptype
+    | _ -> ());
+  let write_field ?(omit_recurrence=false) ({ pbf_extname } as field) =
+    let is_packed, pbf_enc =
+      match field.pbf_enc with
+      | Pbe_packed pbf_enc -> true, pbf_enc
+      | pbf_enc -> false, pbf_enc
+    in
+    let protoc_recurrence =
+      match field.pbf_kind with
+      | Pbk_required -> "required"
+      | Pbk_optional -> "optional"
+      | Pbk_repeated -> "repeated"
+    and protoc_type =
+      match field.pbf_type, pbf_enc with
+      | Pbt_bool,      Pbe_varint -> "bool"
+      | Pbt_int,       Pbe_varint -> "int64"    (* conservative choice of size *)
+      | Pbt_int,       Pbe_zigzag -> "sint64"   (* ditto *)
+      | Pbt_int32,     Pbe_varint -> "int32"
+      | Pbt_int32,     Pbe_zigzag -> "sint32"
+      | Pbt_int64,     Pbe_varint -> "int64"
+      | Pbt_int64,     Pbe_zigzag -> "sint64"
+      | Pbt_uint32,    Pbe_varint -> "uint32"
+      | Pbt_uint32,    Pbe_zigzag -> "sint32"
+      | Pbt_uint64,    Pbe_varint -> "uint64"
+      | Pbt_uint64,    Pbe_zigzag -> "sint64"
+      | (Pbt_int | Pbt_int32 | Pbt_int64 | Pbt_uint32 | Pbt_uint64),
+                       Pbe_bits32 -> "sfixed32"
+      | (Pbt_int | Pbt_int32 | Pbt_int64 | Pbt_uint32 | Pbt_uint64),
+                       Pbe_bits64 -> "sfixed64"
+      | Pbt_float,     Pbe_bits32 -> "float"
+      | Pbt_float,     Pbe_bits64 -> "double"
+      | Pbt_string,    Pbe_bytes  -> "string"
+      | Pbt_bytes,     Pbe_bytes  -> "bytes"
+      | Pbt_imm _,     Pbe_varint -> "_" ^ pbf_extname ^ "._tag"
+      | Pbt_imm _,     Pbe_bytes  -> "_" ^ pbf_extname
+      | Pbt_variant _, Pbe_varint -> "_" ^ pbf_extname
+      | Pbt_nested ([], lid), Pbe_varint ->
+        (String.concat "." (Longident.flatten lid)) ^ "._tag"
+      | Pbt_nested ([], lid), Pbe_bytes ->
+        String.concat "." (Longident.flatten lid)
+      | Pbt_nested(_, _), _
+      | Pbt_poly(_), _ ->
+        raise (Error (Pberr_dumb_protoc field.pbf_loc))
+      | _ -> assert false
+    in
+    Format.fprintf fmt "@,";
+    if omit_recurrence then assert (field.pbf_kind == Pbk_required)
+                       else Format.fprintf fmt "%s " protoc_recurrence;
+    Format.fprintf fmt "%s %s = %d" protoc_type pbf_extname field.pbf_key;
+    if is_packed then
+      Format.fprintf fmt " [packed=true]";
+    let escape ~pass_8bit s =
+      let buf = Buffer.create (String.length s) in
+      s |> String.iter (fun c ->
+        match c with
+        | '\x00'..'\x19' ->
+          Buffer.add_string buf (Printf.sprintf "\\x%02x" (Char.code c))
+        | '\x80'..'\xff' when not pass_8bit ->
+          Buffer.add_string buf (Printf.sprintf "\\x%02x" (Char.code c))
+        | '"' -> Buffer.add_string buf "\\\""
+        | c -> Buffer.add_char buf c);
+      Buffer.contents buf
+    in
+    begin match field.pbf_default with
+    | Some [%expr true]  -> Format.fprintf fmt " [default=true]"
+    | Some [%expr false] -> Format.fprintf fmt " [default=false]"
+    | Some { pexp_desc = Pexp_constant (Const_int i) } ->
+      Format.fprintf fmt " [default=%d]" i
+    | Some { pexp_desc = Pexp_constant (Const_string (s, _)) } ->
+      Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit:true s)
+    | Some [%expr Bytes.of_string [%e? { pexp_desc = Pexp_constant (Const_string (s, _)) }]] ->
+      Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit:false s)
+    | Some { pexp_desc = Pexp_construct ({ txt = Lident n }, _) }
+    | Some { pexp_desc = Pexp_variant (n, _) } ->
+      Format.fprintf fmt " [default=%s_tag]" n
+    | None -> ()
+    | Some { pexp_loc } -> raise (Error (Pberr_ocaml_expr pexp_loc))
+    end;
+    Format.fprintf fmt ";"
+  in
+  begin match fields with
+  | [{ pbf_type = Pbt_variant _ } as field] ->
+    write_field field
+  | ({ pbf_type = Pbt_variant _ } as field) :: fields ->
+    write_field field;
+    Format.fprintf fmt "@,@[<v 2>oneof value {";
+    List.iter (write_field ~omit_recurrence:true) fields;
+    Format.fprintf fmt "@]@,}"
+  | _ -> List.iter write_field fields
+  end;
+  Format.fprintf fmt "@]@,}@,"
+
+let protoc_files: (string, Format.formatter) Hashtbl.t = Hashtbl.create 16
+
+let parse_options ~options ~path type_decls =
+  let protoc        = ref None
+  and protoc_import = ref []
+  in
   options |> List.iter (fun (name, expr) ->
     match name with
-    | _ -> raise_errorf ~loc:expr.pexp_loc "%s does not support option %s" deriver name)
+    | "protoc" ->
+      let protoc_filename =
+        match expr with
+        | [%expr protoc] -> (String.concat "." path) ^ ".protoc"
+        | _              -> Ppx_deriving.Arg.(get_expr ~deriver string) expr
+      in
+      let source_path = expr.pexp_loc.loc_start.Lexing.pos_fname in
+      let protoc_path =
+        Filename.concat (Filename.dirname source_path) protoc_filename in
+      protoc := Some protoc_path
+    | "protoc_import" ->
+      protoc_import := !protoc_import @ Ppx_deriving.Arg.(get_expr ~deriver (list string)) expr
+    | _ -> raise_errorf ~loc:expr.pexp_loc "%s does not support option %s" deriver name);
+  match !protoc with
+  | Some protoc_path ->
+    let fmt =
+      try
+        Hashtbl.find protoc_files protoc_path
+      with Not_found ->
+        let protoc_file = open_out protoc_path in
+        let protoc_formatter = Format.formatter_of_out_channel protoc_file in
+        Format.fprintf protoc_formatter
+          "@[<v>// protoc file autogenerated from OCaml type definitions@,";
+        Format.fprintf protoc_formatter "package %s;@," (String.concat "." path);
+        at_exit (fun () -> Format.fprintf protoc_formatter "@]@?");
+        Hashtbl.add protoc_files protoc_path protoc_formatter;
+        protoc_formatter
+    in
+    List.iter (write_protoc ~fmt ~path ~import:!protoc_import) type_decls
+  | None -> ()
 
 let () =
   Ppx_deriving.(register (create "protobuf"
     ~type_decl_str:(fun ~options ~path type_decls ->
-      parse_options options;
+      parse_options ~options ~path type_decls;
       [Str.value Recursive (List.concat (List.map (str_of_type ~options ~path) type_decls))])
     ~type_decl_sig:(fun ~options ~path type_decls ->
-      parse_options options;
+      parse_options ~options ~path type_decls;
       List.concat (List.map (sig_of_type ~options ~path) type_decls))
     ()
   ))
