@@ -6,6 +6,7 @@ _deriving protobuf_ is a [ppx_deriving][pd] plugin that generates
 from an OCaml type definition.
 
 Sponsored by [Evil Martians](http://evilmartians.com).
+_protoc_ export sponsored by [MaxProfitLab](http://maxprofitlab.com/).
 
 [pd]: https://github.com/whitequark/ppx_deriving
 [pb]: https://developers.google.com/protocol-buffers/
