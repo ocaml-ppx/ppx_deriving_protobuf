@@ -271,22 +271,29 @@ message Variant {
     A = 1;
     B = 2;
     C = 3;
+    D = 4;
   }
   message C {
     required string foo = 1;
-    required string bar = 1;
+    required string bar = 2;
+  }
+  message D {
+    required string s1 = 1;
+    required string s2 = 2;
   }
   required T t = 1;
   optional int32 b = 3; // (B = 2) + 1
   optional C c = 4; // (C = 3) + 1
+  optional D d = 5; // (D = 4) + 1
 }
 ```
 
 ``` ocaml
 type variant =
-| A                    [@key 1]
-| B of int             [@key 2]
-| C of string * string [@key 3]
+| A                              [@key 1]
+| B of int                       [@key 2]
+| C of string * string           [@key 3]
+| D of {s1: string ; s2: string} [@key 4]
 [@@deriving protobuf]
 ```
 

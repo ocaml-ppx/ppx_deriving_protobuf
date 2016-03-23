@@ -1,3 +1,7 @@
+#if OCAML_VERSION < (4, 03, 0)
+#define Pconst_string Const_string
+#endif
+
 open Longident
 open Location
 open Asttypes
@@ -5,6 +9,7 @@ open Parsetree
 open Ast_mapper
 open Ast_helper
 open Ast_convenience
+
 
 type pb_encoding =
 | Pbe_varint
@@ -176,7 +181,12 @@ let deriver = "protobuf"
 
 let pb_key_of_attrs attrs =
   match Ppx_deriving.attr ~deriver "key" attrs with
+#if OCAML_VERSION < (4, 03, 0)
   | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Const_int key) }]]]) ->
+#else
+  | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) }]]]) ->
+    let key = int_of_string sn in 
+#endif
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
       raise (Error (Pberr_key_invalid (loc, key)));
     Some key
@@ -372,8 +382,28 @@ let fields_of_ptype base_path ptype =
         field_of_ptyp ("field_" ^ name) name (base_path @ [name]) None Pbk_required
                       { pld_type with ptyp_attributes = pld_attributes @ pld_type.ptyp_attributes })
     | { ptype_kind = Ptype_variant constrs; ptype_loc } ->
-      constrs |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes; pcd_loc; } ->
-        (name, pcd_args, pcd_attributes, pcd_loc)) |> fields_of_variant ptype_loc
+      constrs 
+      |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes; pcd_loc; } ->
+       (name, pcd_args, pcd_attributes, pcd_loc)
+      ) 
+#if OCAML_VERSION >= (4, 03, 0)
+      |> List.map (fun (name, pcd_args, pcd_attributes, pcd_loc) -> 
+        match pcd_args with
+        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes, pcd_loc) 
+        | Pcstr_record pcd_label_args -> 
+          (* For now inline record are treated just like tuple (hence the key will be 
+             automatically generated starting at 1)
+             
+             Since inline records support attributes, protobuf keys could be
+             customized:
+             
+             `| F {f10 [@key 10] : int; f11 [@key 11] :string}` 
+          *)
+          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in 
+          (name, pcd_args, pcd_attributes, pcd_loc)
+      ) 
+#endif
+      |> fields_of_variant ptype_loc
   in
   fields |> List.iter (fun field ->
     fields |> List.iter (fun field' ->
@@ -381,13 +411,31 @@ let fields_of_ptype base_path ptype =
         raise (Error (Pberr_key_duplicate (field.pbf_key, field'.pbf_loc, field.pbf_loc)))));
   fields |> List.sort (fun { pbf_key = a } { pbf_key = b } -> compare a b)
 
+let empty_constructor_argument {pcd_args; _ } = 
+#if OCAML_VERSION < (4, 03, 0)
+  match pcd_args with
+  | [] -> true
+  | _ -> false 
+#else 
+  match pcd_args with
+  | Pcstr_tuple   [] | Pcstr_record [] -> true
+  | _ -> false 
+#endif
+
+let int64_constant_of_int i = 
+#if OCAML_VERSION < (4, 03, 0)
+  Const_int64 (Int64.of_int i)
+#else
+  Pconst_integer (string_of_int i, Some 'L') 
+#endif
+
 let derive_reader_bare base_path fields ptype =
   let mk_variant mk_constr constrs =
     let rec mk_variant_cases constrs =
       match constrs with
       | (name, attrs) :: rest ->
         let key = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
-        (Exp.case (Pat.constant (Const_int64 (Int64.of_int key)))
+        (Exp.case (Pat.constant (int64_constant_of_int key))
                   (mk_constr name)) :: mk_variant_cases rest
       | [] ->
         let field_name = String.concat "." base_path in
@@ -400,9 +448,10 @@ let derive_reader_bare base_path fields ptype =
     Some (Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf_bare") ptype))
                 [%expr fun decoder -> [%e Ppx_deriving.sanitize matcher]])
   in
+
   match ptype with
   | { ptype_kind = Ptype_variant constrs } when
-      List.for_all (fun { pcd_args } -> pcd_args = []) constrs ->
+      List.for_all empty_constructor_argument constrs ->
     constrs |> List.map (fun { pcd_name = { txt = name }; pcd_attributes } ->
                   name, pcd_attributes) |> mk_variant (fun name -> constr name [])
   | { ptype_kind = Ptype_abstract;
@@ -585,7 +634,7 @@ let rec derive_reader base_path fields ptype =
         let field = try  Some (List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields)
                     with Not_found -> None in
         let key = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
-        let pkey  = [%pat? Some [%p Pat.constant (Const_int64 (Int64.of_int key))]] in
+        let pkey  = [%pat? Some [%p Pat.constant (int64_constant_of_int key)]] in
         let pargs =
           with_args |> List.map (fun name' ->
             let field' = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name') fields in
@@ -654,8 +703,20 @@ let rec derive_reader base_path fields ptype =
       Exp.record (List.mapi (fun i { pld_name; pld_type; } ->
         lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
     | { ptype_kind = Ptype_variant constrs; ptype_name; ptype_loc } ->
-      constrs |> List.map (fun { pcd_name = { txt = name}; pcd_args; pcd_attributes; } ->
-        name, pcd_args, pcd_attributes) |> mk_variant ptype_name ptype_loc constr
+      constrs 
+      |> List.map (fun { pcd_name = { txt = name}; pcd_args; pcd_attributes; } ->
+        name, pcd_args, pcd_attributes
+      ) 
+#if OCAML_VERSION >= (4, 03, 0)
+      |> List.map (fun (name, pcd_args, pcd_attributes) -> 
+        match pcd_args with
+        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes) 
+        | Pcstr_record pcd_label_args -> 
+          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in 
+          (name, pcd_args, pcd_attributes)
+       ) 
+#endif 
+      |> mk_variant ptype_name ptype_loc constr
   in
   let read =
     [%expr let rec read () = [%e matcher] in read (); [%e constructor]] |>
@@ -673,7 +734,7 @@ let derive_writer_bare fields ptype =
       | (name, attrs) :: rest ->
         let key = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
         (Exp.case (mk_pconstr name)
-                  (Exp.constant (Const_int64 (Int64.of_int key)))) ::
+                  (Exp.constant (int64_constant_of_int key))) ::
         mk_variant_cases rest
       | [] -> []
     in
@@ -684,7 +745,7 @@ let derive_writer_bare fields ptype =
   in
   match ptype with
   | { ptype_kind = Ptype_variant constrs } when
-      List.for_all (fun { pcd_args } -> pcd_args = []) constrs ->
+      List.for_all empty_constructor_argument constrs ->
     constrs |> List.map (fun { pcd_name = { txt = name }; pcd_attributes } ->
                   name, pcd_attributes) |> mk_variant (fun name -> pconstr name [])
   | { ptype_kind = Ptype_abstract;
@@ -832,12 +893,12 @@ let rec derive_writer fields ptype =
       match constrs with
       | (name, [], attrs)  :: rest ->
         let key   = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
-        let ekey  = Exp.constant (Const_int64 (Int64.of_int key)) in
+        let ekey  = Exp.constant (int64_constant_of_int key) in
         (Exp.case (mk_patt name []) [%expr Protobuf.Encoder.varint [%e ekey] encoder]) ::
         mk_variant_cases rest
       | (name, [arg], attrs) :: rest ->
         let key   = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
-        let ekey  = Exp.constant (Const_int64 (Int64.of_int key)) in
+        let ekey  = Exp.constant (int64_constant_of_int key) in
         let field = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields in
         (Exp.case (mk_patt name [pvar ("constr_" ^ name)])
                   (deconstruct_ptyp field.pbf_name arg
@@ -847,7 +908,7 @@ let rec derive_writer fields ptype =
         mk_variant_cases rest
       | (name, args, attrs) :: rest ->
         let key   = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
-        let ekey  = Exp.constant (Const_int64 (Int64.of_int key)) in
+        let ekey  = Exp.constant (int64_constant_of_int key) in
         let field = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields in
         let argns = List.mapi (fun i _ -> "a" ^ (string_of_int i)) args in
         (Exp.case (mk_patt name (List.map pvar argns))
@@ -900,9 +961,21 @@ let rec derive_writer fields ptype =
                 deconstruct_ptyp (Printf.sprintf "field_%s" pld_name.txt) pld_type k) ldecls
               (mk_writers fields)]]
     | { ptype_kind = Ptype_variant constrs; ptype_name; ptype_loc } ->
-      mk_variant pconstr
-        (List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes } ->
-          (name, pcd_args, pcd_attributes)) constrs)
+      constrs
+      |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes } ->
+          (name, pcd_args, pcd_attributes)
+      ) 
+#if OCAML_VERSION >= (4, 03, 0)
+      |> List.map (fun (name, pcd_args, pcd_attributes) -> 
+        match pcd_args with
+        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes) 
+        | Pcstr_record pcd_label_args -> 
+          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in 
+          (name, pcd_args, pcd_attributes)
+      ) 
+#endif
+      |> mk_variant pconstr
+
   in
   let write = mk_deconstructor fields |> mk_imm_writers fields in
   Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype))
@@ -926,7 +999,7 @@ let str_of_type ~options ~path ({ ptype_name = { txt = name }; ptype_loc } as pt
 let has_bare ptype =
   match ptype with
   | { ptype_kind = Ptype_variant constrs } when
-      List.for_all (fun { pcd_args } -> pcd_args = []) constrs -> true
+      List.for_all empty_constructor_argument constrs -> true
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
@@ -1057,11 +1130,16 @@ let rec write_protoc ~fmt ~path:base_path ?(import=[])
     begin match field.pbf_default with
     | Some [%expr true]  -> Format.fprintf fmt " [default=true]"
     | Some [%expr false] -> Format.fprintf fmt " [default=false]"
+#if OCAML_VERSION < (4, 03, 0)
     | Some { pexp_desc = Pexp_constant (Const_int i) } ->
+#else
+    | Some { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) } ->
+      let i = int_of_string sn in 
+#endif
       Format.fprintf fmt " [default=%d]" i
-    | Some { pexp_desc = Pexp_constant (Const_string (s, _)) } ->
+    | Some { pexp_desc = Pexp_constant (Pconst_string (s, _)) } ->
       Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit:true s)
-    | Some [%expr Bytes.of_string [%e? { pexp_desc = Pexp_constant (Const_string (s, _)) }]] ->
+    | Some [%expr Bytes.of_string [%e? { pexp_desc = Pexp_constant (Pconst_string (s, _)) }]] ->
       Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit:false s)
     | Some { pexp_desc = Pexp_construct ({ txt = Lident n }, _) }
     | Some { pexp_desc = Pexp_variant (n, _) } ->
