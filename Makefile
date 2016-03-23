@@ -3,7 +3,7 @@ build:
 	ocaml pkg/build.ml native=true native-dynlink=true
 
 test: build
-	rm _build/src_test/ -rf
+	rm -rf _build/src_test/ 
 	ocamlbuild -classic-display -use-ocamlfind src_test/test_ppx_protobuf.byte --
 
 doc:
