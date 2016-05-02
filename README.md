@@ -32,7 +32,7 @@ definitions. It can also generate input files for _protoc_.
 
 _deriving protobuf_-generated serializers are derived from the structure of the type
 and several attributes: `@key`, `@encoding`, `@bare` and `@default`. Generation
-of the serializer is triggered by a `@@[deriving Protobuf]` attribute attached
+of the serializer is triggered by a `[@@deriving Protobuf]` attribute attached
 to the type definition.
 
 _deriving protobuf_ generates two functions per type:
