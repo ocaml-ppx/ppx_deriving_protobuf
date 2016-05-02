@@ -1,6 +1,19 @@
 Changelog
 =========
 
+2.4
+---
+
+  * OCaml 4.03.0 compatibility.
+
+2.3
+---
+
+  * Add support for exporting `.protoc` files.
+  * Add support for hygiene.
+  * Fix several bugs related to edge cases in serializing and deserializing
+    integers.
+
 2.2
 ---
 
