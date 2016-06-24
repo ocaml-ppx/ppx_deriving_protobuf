@@ -1,7 +1,7 @@
 version = "%{version}%"
 description = "[@@deriving protobuf]"
 requires(-ppx_driver) = "ppx_deriving ppx_deriving_protobuf.runtime"
-ppxopt(-ppx_driver) = "ppx_deriving,./ppx_deriving_protobuf.cma"
+ppxopt(-ppx_driver,-custom_ppx) = "ppx_deriving,./ppx_deriving_protobuf.cma"
 requires(ppx_driver) = "ppx_deriving.api"
 archive(ppx_driver, byte) = "ppx_deriving_protobuf.cma"
 archive(ppx_driver, native) = "ppx_deriving_protobuf.cmxa"
