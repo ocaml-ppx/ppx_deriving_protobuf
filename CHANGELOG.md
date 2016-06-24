@@ -1,6 +1,10 @@
 Changelog
 =========
 
+2.5
+---
+  * Compatibility with statically linked ppx drivers.
+
 2.4
 ---
 
