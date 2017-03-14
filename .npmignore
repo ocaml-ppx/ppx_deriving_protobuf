@@ -1,0 +1,9 @@
+_tags
+pkg
+doc
+src_test
+opam
+desc
+myocamlbuild.ml
+.travis.yml
+Makefile

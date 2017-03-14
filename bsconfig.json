@@ -1,0 +1,12 @@
+{
+  "name": "bs-ppx_deriving_protobuf",
+  "sources": {
+    "dir": "src",
+    "public": ["Protobuf"],
+    "files": [
+      "protobuf.mli",
+      "protobuf.ml"
+    ]
+  },
+  "generate-merlin": false
+}
