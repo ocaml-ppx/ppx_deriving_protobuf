@@ -39,6 +39,8 @@ let test_decoder ctxt =
   assert_equal ~printer:Int64.to_string (-2L) (Decoder.zigzag d);
   let d = Decoder.of_string "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01" in
   assert_equal ~printer:Int64.to_string 0xffffffffffffffffL (Decoder.varint d);
+  let d = Decoder.of_string "\x80\x80\x80\x80\x80\x80\x80\x80\x03" in
+  assert_equal ~printer:Int64.to_string Int64.(shift_left 3L 56) (Decoder.varint d);
   let d = Decoder.of_string "\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02" in
   assert_raises (Decoder.Failure Decoder.Overlong_varint)
                 (fun () -> Decoder.varint d);

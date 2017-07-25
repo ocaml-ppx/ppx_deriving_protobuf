@@ -108,7 +108,7 @@ module Decoder = struct
       let b = byte d in
       if b land 0x80 <> 0 then
         Int64.(logor (shift_left (logand (of_int b) 0x7fL) s) (read (s + 7)))
-      else if s < 56 || (b land 0x7f) <= 1 then
+      else if s < 63 || (b land 0x7f) <= 1 then
         Int64.(shift_left (of_int b) s)
       else
         raise (Failure Overlong_varint)
