@@ -2,6 +2,11 @@
 #define Pconst_string Const_string
 #endif
 
+#if OCAML_VERSION >= (4, 06, 0)
+#define Rtag(label, attrs, has_empty, args) \
+        Rtag({ txt = label }, attrs, has_empty, args)
+#endif
+
 open Longident
 open Location
 open Asttypes
@@ -367,8 +372,8 @@ let fields_of_ptype base_path ptype =
         ptype_loc; } ->
       rows |> List.map (fun row_field ->
         match row_field with
-        | Rtag (name, attrs, _, [])  -> (name, [], attrs, ptyp_loc)
-        | Rtag (name, attrs, _, [a]) -> (name, [a], attrs, ptyp_loc)
+        | Rtag(name, attrs, _, [])  -> (name, [], attrs, ptyp_loc)
+        | Rtag(name, attrs, _, [a]) -> (name, [a], attrs, ptyp_loc)
         | _ -> raise (Error (Pberr_wrong_ty ptyp))) |>
       fields_of_variant ptype_loc
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
@@ -457,10 +462,10 @@ let derive_reader_bare base_path fields ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-          match row_field with Rtag (_, _, _, []) -> true | _ -> false) rows ->
+          match row_field with Rtag(_, _, _, []) -> true | _ -> false) rows ->
     rows |> List.map (fun row_field ->
       match row_field with
-      | Rtag (name, attrs, _, []) -> (name, attrs)
+      | Rtag(name, attrs, _, []) -> (name, attrs)
       | _ -> assert false) |> mk_variant (fun name -> Exp.variant name None)
   | _ -> None
 
@@ -688,7 +693,7 @@ let rec derive_reader base_path fields ptype =
         ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } ->
       rows |> List.map (fun row_field ->
         match row_field with
-        | Rtag (name, attrs, _, args) -> (name, args, attrs)
+        | Rtag(name, attrs, _, args) -> (name, args, attrs)
         | _ -> assert false) |> mk_variant ptype_name ptype_loc
           (fun name args ->
             match args with
@@ -751,10 +756,10 @@ let derive_writer_bare fields ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-          match row_field with Rtag (_, _, _, []) -> true | _ -> false) rows ->
+          match row_field with Rtag(_, _, _, []) -> true | _ -> false) rows ->
     rows |> List.map (fun row_field ->
       match row_field with
-      | Rtag (name, attrs, _, []) -> (name, attrs)
+      | Rtag(name, attrs, _, []) -> (name, attrs)
       | _ -> assert false) |> mk_variant (fun name -> Pat.variant name None)
   | _ -> None
 
@@ -943,7 +948,7 @@ let rec derive_writer fields ptype =
             | _   -> Some (ptuple args)))
         (List.map (fun row_field ->
           match row_field with
-          | Rtag (name, attrs, _, args) -> (name, args, attrs)
+          | Rtag(name, attrs, _, args) -> (name, args, attrs)
           | _ -> assert false) rows)
 
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
@@ -1003,7 +1008,7 @@ let has_bare ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-          match row_field with Rtag (_, _, _, []) -> true | _ -> false) rows -> true
+          match row_field with Rtag(_, _, _, []) -> true | _ -> false) rows -> true
   | _ -> false
 
 let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
