@@ -1,6 +1,20 @@
 Changelog
 =========
 
+2.6
+---
+
+  * Support for NPM packaging (#17)
+    (Maxime Rasan)
+  * Fix `varint` decoding (#18)
+    (There was a decoding bug for integers between 2^56 and 2^63)
+    (Maxime Rasan)
+  * Support for OCaml 4.06 (#19)
+    (Gabriel Scherer)
+
+The homepage for the project has now moved to:
+<https://github.com/ocaml-ppx/ppx_deriving_protobuf>
+
 2.5
 ---
   * Compatibility with statically linked ppx drivers.
