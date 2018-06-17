@@ -8,7 +8,7 @@ from an OCaml type definition.
 Sponsored by [Evil Martians](http://evilmartians.com).
 _protoc_ export sponsored by [MaxProfitLab](http://maxprofitlab.com/).
 
-[pd]: https://github.com/whitequark/ppx_deriving
+[pd]: https://github.com/ocaml-ppx/ppx_deriving
 [pb]: https://developers.google.com/protocol-buffers/
 
 Installation
@@ -771,7 +771,7 @@ API Documentation
 -----------------
 
 The documentation for internal API is available at
-[GitHub pages](http://whitequark.github.io/ppx_deriving_protobuf/).
+[GitHub pages](http://ocaml-ppx.github.io/ppx_deriving_protobuf/).
 
 License
 -------
