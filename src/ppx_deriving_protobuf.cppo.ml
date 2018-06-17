@@ -1,7 +1,3 @@
-#if OCAML_VERSION < (4, 03, 0)
-#define Pconst_string Const_string
-#endif
-
 #if OCAML_VERSION >= (4, 06, 0)
 #define Rtag(label, attrs, has_empty, args) \
         Rtag({ txt = label }, attrs, has_empty, args)

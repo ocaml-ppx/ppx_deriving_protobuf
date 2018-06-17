@@ -1,6 +1,6 @@
 {
   "name": "bs-ppx_deriving_protobuf",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "A Protocol Buffers codec generator for OCaml >=4.02",
   "keywords": ["protobuf", "serialization", "syntax", "bucklescript"],
   "homepage": "https://github.com/whitequark/ppx_deriving_protobuf",
@@ -8,8 +8,8 @@
   "license": "MIT",
   "author": " whitequark <whitequark@whitequark.org>",
   "main": "lib/src/protobuf.js",
-  "repository" : { 
-    "type": "git", 
+  "repository" : {
+    "type": "git",
     "url": "https://github.com/whitequark/ppx_deriving_protobuf"
   },
   "devDependencies": {

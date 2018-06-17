@@ -1,9 +1,8 @@
-_tags
 pkg
-doc
 src_test
-opam
-desc
+ppx_deriving_protobuf.opam
+jbuild-workspace.dev
+descr
 myocamlbuild.ml
 .travis.yml
 Makefile

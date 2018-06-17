@@ -1,0 +1,24 @@
+opam-version: "1.2"
+version: "2.6"
+maintainer: "whitequark <whitequark@whitequark.org>"
+authors: [ "whitequark <whitequark@whitequark.org>" ]
+license: "MIT"
+homepage: "https://github.com/ocaml-ppx/ppx_deriving_protobuf"
+doc: "https://ocaml-ppx.github.io/ppx_deriving_protobuf"
+bug-reports: "https://github.com/ocaml-ppx/ppx_deriving_protobuf/issues"
+dev-repo: "git://github.com/ocaml-ppx/ppx_deriving_protobuf.git"
+tags: [ "syntax" ]
+build: [
+  ["jbuilder" "subst" "-n" name] {pinned}
+  ["jbuilder" "build" "-p" name "-j" jobs]
+]
+build-test: [["jbuilder" "runtest" "-p" name "-j" jobs]]
+depends: [
+  "jbuilder"     {build}
+  "ppxfind"      {build}
+  "ppx_tools"    {build}
+  "cppo"         {build}
+  "ppx_deriving" {>= "4.0" & < "5.0"}
+  "ounit"        {test}
+  "uint"         {test}
+]

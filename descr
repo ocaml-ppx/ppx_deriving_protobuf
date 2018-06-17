@@ -1,2 +1,4 @@
-A Protocol Buffers codec generator for OCaml >=4.02
-A Protocol Buffers codec generator for OCaml >=4.02
+Protocol Buffers codec generator for OCaml
+
+ppx_deriving_protobuf is a ppx_deriving plugin that provides
+a Protocol Buffers codec generator.
