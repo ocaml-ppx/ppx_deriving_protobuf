@@ -190,7 +190,7 @@ let pb_key_of_attrs attrs =
   | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Const_int key) }]]]) ->
 #else
   | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) }]]]) ->
-    let key = int_of_string sn in 
+    let key = int_of_string sn in
 #endif
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
       raise (Error (Pberr_key_invalid (loc, key)));
@@ -387,26 +387,26 @@ let fields_of_ptype base_path ptype =
         field_of_ptyp ("field_" ^ name) name (base_path @ [name]) None Pbk_required
                       { pld_type with ptyp_attributes = pld_attributes @ pld_type.ptyp_attributes })
     | { ptype_kind = Ptype_variant constrs; ptype_loc } ->
-      constrs 
+      constrs
       |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes; pcd_loc; } ->
        (name, pcd_args, pcd_attributes, pcd_loc)
-      ) 
+      )
 #if OCAML_VERSION >= (4, 03, 0)
-      |> List.map (fun (name, pcd_args, pcd_attributes, pcd_loc) -> 
+      |> List.map (fun (name, pcd_args, pcd_attributes, pcd_loc) ->
         match pcd_args with
-        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes, pcd_loc) 
-        | Pcstr_record pcd_label_args -> 
-          (* For now inline record are treated just like tuple (hence the key will be 
+        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes, pcd_loc)
+        | Pcstr_record pcd_label_args ->
+          (* For now inline record are treated just like tuple (hence the key will be
              automatically generated starting at 1)
-             
+
              Since inline records support attributes, protobuf keys could be
              customized:
-             
-             `| F {f10 [@key 10] : int; f11 [@key 11] :string}` 
+
+             `| F {f10 [@key 10] : int; f11 [@key 11] :string}`
           *)
-          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in 
+          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in
           (name, pcd_args, pcd_attributes, pcd_loc)
-      ) 
+      )
 #endif
       |> fields_of_variant ptype_loc
   in
@@ -416,22 +416,22 @@ let fields_of_ptype base_path ptype =
         raise (Error (Pberr_key_duplicate (field.pbf_key, field'.pbf_loc, field.pbf_loc)))));
   fields |> List.sort (fun { pbf_key = a } { pbf_key = b } -> compare a b)
 
-let empty_constructor_argument {pcd_args; _ } = 
+let empty_constructor_argument {pcd_args; _ } =
 #if OCAML_VERSION < (4, 03, 0)
   match pcd_args with
   | [] -> true
-  | _ -> false 
-#else 
+  | _ -> false
+#else
   match pcd_args with
   | Pcstr_tuple   [] | Pcstr_record [] -> true
-  | _ -> false 
+  | _ -> false
 #endif
 
-let int64_constant_of_int i = 
+let int64_constant_of_int i =
 #if OCAML_VERSION < (4, 03, 0)
   Const_int64 (Int64.of_int i)
 #else
-  Pconst_integer (string_of_int i, Some 'L') 
+  Pconst_integer (string_of_int i, Some 'L')
 #endif
 
 let derive_reader_bare base_path fields ptype =
@@ -708,19 +708,19 @@ let rec derive_reader base_path fields ptype =
       Exp.record (List.mapi (fun i { pld_name; pld_type; } ->
         lid pld_name.txt, construct_ptyp ("field_" ^ pld_name.txt) pld_type) fields) None
     | { ptype_kind = Ptype_variant constrs; ptype_name; ptype_loc } ->
-      constrs 
+      constrs
       |> List.map (fun { pcd_name = { txt = name}; pcd_args; pcd_attributes; } ->
         name, pcd_args, pcd_attributes
-      ) 
+      )
 #if OCAML_VERSION >= (4, 03, 0)
-      |> List.map (fun (name, pcd_args, pcd_attributes) -> 
+      |> List.map (fun (name, pcd_args, pcd_attributes) ->
         match pcd_args with
-        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes) 
-        | Pcstr_record pcd_label_args -> 
-          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in 
+        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes)
+        | Pcstr_record pcd_label_args ->
+          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in
           (name, pcd_args, pcd_attributes)
-       ) 
-#endif 
+       )
+#endif
       |> mk_variant ptype_name ptype_loc constr
   in
   let read =
@@ -969,15 +969,15 @@ let rec derive_writer fields ptype =
       constrs
       |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes } ->
           (name, pcd_args, pcd_attributes)
-      ) 
+      )
 #if OCAML_VERSION >= (4, 03, 0)
-      |> List.map (fun (name, pcd_args, pcd_attributes) -> 
+      |> List.map (fun (name, pcd_args, pcd_attributes) ->
         match pcd_args with
-        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes) 
-        | Pcstr_record pcd_label_args -> 
-          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in 
+        | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes)
+        | Pcstr_record pcd_label_args ->
+          let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in
           (name, pcd_args, pcd_attributes)
-      ) 
+      )
 #endif
       |> mk_variant pconstr
 
@@ -1139,7 +1139,7 @@ let rec write_protoc ~fmt ~path:base_path ?(import=[])
     | Some { pexp_desc = Pexp_constant (Const_int i) } ->
 #else
     | Some { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) } ->
-      let i = int_of_string sn in 
+      let i = int_of_string sn in
 #endif
       Format.fprintf fmt " [default=%d]" i
     | Some { pexp_desc = Pexp_constant (Pconst_string (s, _)) } ->
