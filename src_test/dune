@@ -1,0 +1,12 @@
+(executable
+ (name test_ppx_protobuf)
+ (libraries str uint oUnit)
+ (preprocess
+  (pps ppx_deriving_protobuf)))
+
+(alias
+ (name runtest)
+ (deps
+  (:< test_ppx_protobuf.exe))
+ (action
+  (run %{<})))
