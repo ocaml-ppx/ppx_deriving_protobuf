@@ -1,0 +1,24 @@
+(rule
+ (deps
+  (:< ppx_deriving_protobuf.cppo.ml))
+ (targets ppx_deriving_protobuf.ml)
+ (action
+  (run %{bin:cppo} -V OCAML:%{ocaml_version} %{<} -o %{targets})))
+
+(library
+ (name protobuf)
+ (public_name ppx_deriving_protobuf.protobuf)
+ (synopsis "Low-level Protocol Buffers codec")
+ (modules protobuf))
+
+(library
+ (name ppx_deriving_protobuf)
+ (public_name ppx_deriving_protobuf)
+ (synopsis "[@@deriving protobuf]")
+ (libraries ppx_deriving.api)
+ (preprocess
+  (action
+   (run ppxfind -legacy ppx_tools.metaquot --as-pp %{input-file})))
+ (ppx_runtime_libraries ppx_deriving_protobuf.protobuf)
+ (modules ppx_deriving_protobuf)
+ (kind ppx_deriver))
