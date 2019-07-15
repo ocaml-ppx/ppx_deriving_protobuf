@@ -1,6 +1,18 @@
-#if OCAML_VERSION >= (4, 06, 0)
+#if OCAML_VERSION >= (4, 08, 0)
+#define Rtag(label, attrs, has_empty, args) \
+        Rtag({ txt = label }, has_empty, args)
+#elif OCAML_VERSION >= (4, 06, 0)
 #define Rtag(label, attrs, has_empty, args) \
         Rtag({ txt = label }, attrs, has_empty, args)
+#endif
+
+#if OCAML_VERSION >= (4, 08, 0)
+#define Attribute_patt(loc_, txt_, payload) {attr_name = \
+                                                {txt = txt_; loc = loc_}; \
+                                                attr_payload = payload; \
+                                                attr_loc = _ }
+#else
+#define Attribute_patt(loc_, txt_, payload) ({txt = txt_; loc = loc_}, payload)
 #endif
 
 open Longident
@@ -140,7 +152,7 @@ let describe_error error =
       | `Packed   -> "packed", "[@packed]"
     in
     errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation
-  | Pberr_wrong_attr ({ txt; loc }, _) ->
+  | Pberr_wrong_attr (Attribute_patt(loc, txt, _)) ->
     errorf ~loc "Attribute @%s is not recognized here" txt
   | Pberr_no_key loc ->
     errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]"
@@ -151,7 +163,11 @@ let describe_error error =
       errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key
   | Pberr_key_duplicate (key, loc1, loc2) ->
     errorf ~loc:loc1 "Key %d is already used" key
+#if OCAML_VERSION >= (4, 08, 0)
+                 ~sub:[msg ~loc:loc2 "Initially defined here"]
+#else
                  ~sub:[errorf ~loc:loc2 "Initially defined here"]
+#endif
   | Pberr_abstract { ptype_loc = loc } ->
     errorf ~loc "Abstract types are not supported"
   | Pberr_open { ptype_loc = loc } ->
@@ -185,41 +201,42 @@ let pb_key_of_attrs attrs =
 #if OCAML_VERSION < (4, 03, 0)
   | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Const_int key) }]]]) ->
 #else
-  | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) }]]]) ->
+  | Some (Attribute_patt(loc, _,
+    (PStr [[%stri [%e? { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) }]]]))) ->
     let key = int_of_string sn in
 #endif
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
       raise (Error (Pberr_key_invalid (loc, key)));
     Some key
-  | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Key)))
+  | Some (Attribute_patt(loc, _, _)) -> raise (Error (Pberr_attr_syntax (loc, `Key)))
   | None -> None
 
 let pb_encoding_of_attrs attrs =
   match Ppx_deriving.attr ~deriver "encoding" attrs with
-  | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_variant (kind, None) }]]]) ->
+  | Some (Attribute_patt(loc, _, PStr [[%stri [%e? { pexp_desc = Pexp_variant (kind, None) }]]])) ->
     begin match pb_encoding_of_string kind with
     | Some x -> Some x
     | None -> raise (Error (Pberr_attr_syntax (loc, `Encoding)))
     end
-  | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Encoding)))
+  | Some (Attribute_patt(loc, _, _)) -> raise (Error (Pberr_attr_syntax (loc, `Encoding)))
   | None -> None
 
 let bare_of_attrs attrs =
   match Ppx_deriving.attr ~deriver "bare" attrs with
-  | Some (_, PStr []) -> true
-  | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Bare)))
+  | Some (Attribute_patt(_, _, PStr [])) -> true
+  | Some (Attribute_patt(loc, _, _)) -> raise (Error (Pberr_attr_syntax (loc, `Bare)))
   | None -> false
 
 let default_of_attrs attrs =
   match Ppx_deriving.attr ~deriver "default" attrs with
-  | Some (_, PStr [[%stri [%e? expr]]]) -> Some expr
-  | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Default)))
+  | Some (Attribute_patt(_, _, PStr [[%stri [%e? expr]]])) -> Some expr
+  | Some (Attribute_patt(loc, _, _)) -> raise (Error (Pberr_attr_syntax (loc, `Default)))
   | None -> None
 
 let packed_of_attrs attrs =
   match Ppx_deriving.attr ~deriver "packed" attrs with
-  | Some (_, PStr []) -> true
-  | Some ({ loc }, _) -> raise (Error (Pberr_attr_syntax (loc, `Packed)))
+  | Some (Attribute_patt(_, _, PStr [])) -> true
+  | Some (Attribute_patt(loc, _, _)) -> raise (Error (Pberr_attr_syntax (loc, `Packed)))
   | None -> false
 
 let fields_of_ptype base_path ptype =
@@ -367,9 +384,21 @@ let fields_of_ptype base_path ptype =
         ptype_manifest = Some ({ ptyp_desc = Ptyp_variant (rows, _, _); ptyp_loc } as ptyp);
         ptype_loc; } ->
       rows |> List.map (fun row_field ->
+#if OCAML_VERSION >= (4, 08, 0)
+        match row_field.prf_desc with
+#else
         match row_field with
-        | Rtag(name, attrs, _, [])  -> (name, [], attrs, ptyp_loc)
-        | Rtag(name, attrs, _, [a]) -> (name, [a], attrs, ptyp_loc)
+#endif
+        | Rtag(name, attrs, _, []) ->
+#if OCAML_VERSION >= (4, 08, 0)
+          let attrs = row_field.prf_attributes in
+#endif
+          (name, [], attrs, ptyp_loc)
+        | Rtag(name, attrs, _, [a]) ->
+#if OCAML_VERSION >= (4, 08, 0)
+          let attrs = row_field.prf_attributes in
+#endif
+          (name, [a], attrs, ptyp_loc)
         | _ -> raise (Error (Pberr_wrong_ty ptyp))) |>
       fields_of_variant ptype_loc
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
@@ -458,10 +487,23 @@ let derive_reader_bare base_path fields ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-          match row_field with Rtag(_, _, _, []) -> true | _ -> false) rows ->
+#if OCAML_VERSION >= (4, 08, 0)
+          match row_field.prf_desc with
+#else
+          match row_field with
+#endif
+          Rtag(_, _, _, []) -> true | _ -> false) rows ->
     rows |> List.map (fun row_field ->
-      match row_field with
-      | Rtag(name, attrs, _, []) -> (name, attrs)
+#if OCAML_VERSION >= (4, 08, 0)
+          match row_field.prf_desc with
+#else
+          match row_field with
+#endif
+      | Rtag(name, attrs, _, []) ->
+#if OCAML_VERSION >= (4, 08, 0)
+        let attrs = row_field.prf_attributes in
+#endif
+        (name, attrs)
       | _ -> assert false) |> mk_variant (fun name -> Exp.variant name None)
   | _ -> None
 
@@ -688,8 +730,16 @@ let rec derive_reader base_path fields ptype =
         ptype_kind = Ptype_abstract;
         ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } ->
       rows |> List.map (fun row_field ->
+#if OCAML_VERSION >= (4, 08, 0)
+        match row_field.prf_desc with
+#else
         match row_field with
-        | Rtag(name, attrs, _, args) -> (name, args, attrs)
+#endif
+        | Rtag(name, attrs, _, args) ->
+#if OCAML_VERSION >= (4, 08, 0)
+          let attrs = row_field.prf_attributes in
+#endif
+          (name, args, attrs)
         | _ -> assert false) |> mk_variant ptype_name ptype_loc
           (fun name args ->
             match args with
@@ -752,10 +802,23 @@ let derive_writer_bare fields ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-          match row_field with Rtag(_, _, _, []) -> true | _ -> false) rows ->
+#if OCAML_VERSION >= (4, 08, 0)
+          match row_field.prf_desc with
+#else
+          match row_field with
+#endif
+          Rtag(_, _, _, []) -> true | _ -> false) rows ->
     rows |> List.map (fun row_field ->
+#if OCAML_VERSION >= (4, 08, 0)
+      match row_field.prf_desc with
+#else
       match row_field with
-      | Rtag(name, attrs, _, []) -> (name, attrs)
+#endif
+      | Rtag(name, attrs, _, []) ->
+#if OCAML_VERSION >= (4, 08, 0)
+        let attrs = row_field.prf_attributes in
+#endif
+        (name, attrs)
       | _ -> assert false) |> mk_variant (fun name -> Pat.variant name None)
   | _ -> None
 
@@ -943,8 +1006,16 @@ let rec derive_writer fields ptype =
             | [x] -> Some x
             | _   -> Some (ptuple args)))
         (List.map (fun row_field ->
+#if OCAML_VERSION >= (4, 08, 0)
+          match row_field.prf_desc with
+#else
           match row_field with
-          | Rtag(name, attrs, _, args) -> (name, args, attrs)
+#endif
+          | Rtag(name, attrs, _, args) ->
+#if OCAML_VERSION >= (4, 08, 0)
+            let attrs = row_field.prf_attributes in
+#endif
+            (name, args, attrs)
           | _ -> assert false) rows)
 
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
@@ -1004,7 +1075,12 @@ let has_bare ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-          match row_field with Rtag(_, _, _, []) -> true | _ -> false) rows -> true
+#if OCAML_VERSION >= (4, 08, 0)
+          match row_field.prf_desc with
+#else
+          match row_field with
+#endif
+          Rtag(_, _, _, []) -> true | _ -> false) rows -> true
   | _ -> false
 
 let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
