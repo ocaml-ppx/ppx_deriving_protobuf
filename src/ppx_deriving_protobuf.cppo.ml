@@ -7,6 +7,9 @@
 #elif OCAML_VERSION >= (4, 06, 0)
 #define Rtag_patt(label, attrs, has_empty, args) \
         Rtag({ txt = label }, attrs, has_empty, args)
+#else
+#define Rtag_patt(label, attrs, has_empty, args) \
+        Rtag(label, attrs, has_empty, args)
 #endif
 
 #if OCAML_VERSION >= (4, 08, 0)
