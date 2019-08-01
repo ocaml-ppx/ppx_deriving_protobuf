@@ -1,8 +1,11 @@
 #if OCAML_VERSION >= (4, 08, 0)
-#define Rtag(label, attrs, has_empty, args) \
-        Rtag({ txt = label }, has_empty, args)
+#define Rtag_patt(label, attrs, has_empty, args) \
+        { \
+          prf_desc = Rtag({ txt = label }, has_empty, args); \
+          prf_attributes = attrs; \
+        }
 #elif OCAML_VERSION >= (4, 06, 0)
-#define Rtag(label, attrs, has_empty, args) \
+#define Rtag_patt(label, attrs, has_empty, args) \
         Rtag({ txt = label }, attrs, has_empty, args)
 #endif
 
@@ -384,20 +387,10 @@ let fields_of_ptype base_path ptype =
         ptype_manifest = Some ({ ptyp_desc = Ptyp_variant (rows, _, _); ptyp_loc } as ptyp);
         ptype_loc; } ->
       rows |> List.map (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-        match row_field.prf_desc with
-#else
         match row_field with
-#endif
-        | Rtag(name, attrs, _, []) ->
-#if OCAML_VERSION >= (4, 08, 0)
-          let attrs = row_field.prf_attributes in
-#endif
+        | Rtag_patt(name, attrs, _, []) ->
           (name, [], attrs, ptyp_loc)
-        | Rtag(name, attrs, _, [a]) ->
-#if OCAML_VERSION >= (4, 08, 0)
-          let attrs = row_field.prf_attributes in
-#endif
+        | Rtag_patt(name, attrs, _, [a]) ->
           (name, [a], attrs, ptyp_loc)
         | _ -> raise (Error (Pberr_wrong_ty ptyp))) |>
       fields_of_variant ptype_loc
@@ -487,22 +480,11 @@ let derive_reader_bare base_path fields ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-          match row_field.prf_desc with
-#else
           match row_field with
-#endif
-          Rtag(_, _, _, []) -> true | _ -> false) rows ->
+          Rtag_patt(_, _, _, []) -> true | _ -> false) rows ->
     rows |> List.map (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-          match row_field.prf_desc with
-#else
-          match row_field with
-#endif
-      | Rtag(name, attrs, _, []) ->
-#if OCAML_VERSION >= (4, 08, 0)
-        let attrs = row_field.prf_attributes in
-#endif
+      match row_field with
+      | Rtag_patt(name, attrs, _, []) ->
         (name, attrs)
       | _ -> assert false) |> mk_variant (fun name -> Exp.variant name None)
   | _ -> None
@@ -730,15 +712,8 @@ let rec derive_reader base_path fields ptype =
         ptype_kind = Ptype_abstract;
         ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } ->
       rows |> List.map (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-        match row_field.prf_desc with
-#else
         match row_field with
-#endif
-        | Rtag(name, attrs, _, args) ->
-#if OCAML_VERSION >= (4, 08, 0)
-          let attrs = row_field.prf_attributes in
-#endif
+        | Rtag_patt(name, attrs, _, args) ->
           (name, args, attrs)
         | _ -> assert false) |> mk_variant ptype_name ptype_loc
           (fun name args ->
@@ -802,22 +777,11 @@ let derive_writer_bare fields ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-          match row_field.prf_desc with
-#else
           match row_field with
-#endif
-          Rtag(_, _, _, []) -> true | _ -> false) rows ->
+          Rtag_patt(_, _, _, []) -> true | _ -> false) rows ->
     rows |> List.map (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-      match row_field.prf_desc with
-#else
       match row_field with
-#endif
-      | Rtag(name, attrs, _, []) ->
-#if OCAML_VERSION >= (4, 08, 0)
-        let attrs = row_field.prf_attributes in
-#endif
+      | Rtag_patt(name, attrs, _, []) ->
         (name, attrs)
       | _ -> assert false) |> mk_variant (fun name -> Pat.variant name None)
   | _ -> None
@@ -1006,15 +970,8 @@ let rec derive_writer fields ptype =
             | [x] -> Some x
             | _   -> Some (ptuple args)))
         (List.map (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-          match row_field.prf_desc with
-#else
           match row_field with
-#endif
-          | Rtag(name, attrs, _, args) ->
-#if OCAML_VERSION >= (4, 08, 0)
-            let attrs = row_field.prf_attributes in
-#endif
+          | Rtag_patt(name, attrs, _, args) ->
             (name, args, attrs)
           | _ -> assert false) rows)
 
@@ -1075,12 +1032,8 @@ let has_bare ptype =
   | { ptype_kind = Ptype_abstract;
       ptype_manifest = Some { ptyp_desc = Ptyp_variant (rows, _, _) } } when
         List.for_all (fun row_field ->
-#if OCAML_VERSION >= (4, 08, 0)
-          match row_field.prf_desc with
-#else
           match row_field with
-#endif
-          Rtag(_, _, _, []) -> true | _ -> false) rows -> true
+          Rtag_patt(_, _, _, []) -> true | _ -> false) rows -> true
   | _ -> false
 
 let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
