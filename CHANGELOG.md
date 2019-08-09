@@ -1,6 +1,14 @@
 Changelog
 =========
 
+2.7
+---
+
+  * port to dune
+    (whitequark)
+  * support for OCaml 4.08 (#26)
+    (Anton Kochkov, review by Gabriel Scherer)
+
 2.6
 ---
 
