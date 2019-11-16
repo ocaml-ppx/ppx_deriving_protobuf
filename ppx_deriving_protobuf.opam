@@ -15,9 +15,9 @@ build: [
 run-test: [["dune" "runtest" "-p" name "-j" jobs]]
 depends: [
   "ocaml"        {>= "4.3"}
-  "dune"         {build & >= "1.0"}
-  "ppxfind"      {build}
-  "ppx_tools"    {build}
+  "dune"         {>= "1.0"}
+  "ppxfind"
+  "ppx_tools"
   "cppo"         {build}
   "ppx_deriving" {>= "4.0" & < "5.0"}
   "ounit"        {with-test}
