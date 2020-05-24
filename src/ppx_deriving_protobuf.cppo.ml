@@ -1177,8 +1177,8 @@ let rec write_protoc ~fmt ~path:base_path ?(import=[])
     | Some expr ->
         let expr, pass_8bit =
           match expr with
-          | [%expr Bytes.of_string [%e? sub_expr ]] -> sub_expr, true
-          | _ -> expr, false in
+          | [%expr Bytes.of_string [%e? sub_expr ]] -> sub_expr, false
+          | _ -> expr, true in
         match Ppx_deriving.string_of_expression_opt expr with
         | Some s ->
           Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit s)
