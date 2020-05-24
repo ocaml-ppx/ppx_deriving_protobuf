@@ -1170,15 +1170,20 @@ let rec write_protoc ~fmt ~path:base_path ?(import=[])
       let i = int_of_string sn in
 #endif
       Format.fprintf fmt " [default=%d]" i
-    | Some { pexp_desc = Pexp_constant (Pconst_string (s, _)) } ->
-      Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit:true s)
-    | Some [%expr Bytes.of_string [%e? { pexp_desc = Pexp_constant (Pconst_string (s, _)) }]] ->
-      Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit:false s)
     | Some { pexp_desc = Pexp_construct ({ txt = Lident n }, _) }
     | Some { pexp_desc = Pexp_variant (n, _) } ->
       Format.fprintf fmt " [default=%s_tag]" n
     | None -> ()
-    | Some { pexp_loc } -> raise (Error (Pberr_ocaml_expr pexp_loc))
+    | Some expr ->
+        let expr, pass_8bit =
+          match expr with
+          | [%expr Bytes.of_string [%e? sub_expr ]] -> sub_expr, true
+          | _ -> expr, false in
+        match Ppx_deriving.string_of_expression_opt expr with
+        | Some s ->
+          Format.fprintf fmt " [default=\"%s\"]" (escape ~pass_8bit s)
+        | None ->
+          raise (Error (Pberr_ocaml_expr expr.pexp_loc))
     end;
     Format.fprintf fmt ";"
   in
