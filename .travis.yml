@@ -4,9 +4,7 @@ install: wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.t
 script: bash -ex .travis-opam.sh
 env:
   global:
-    - TESTS=true
-      PINS="ppx_tools:https://github.com/kit-ty-kate/ppx_tools.git#411
-        ppx_deriving:https://github.com/ocaml-ppx/ppx_deriving.git#pre-ppxlib"
+    - PINS="ppx_deriving:https://github.com/ocaml-ppx/ppx_deriving.git#pre-ppxlib"
   matrix:
     - OCAML_VERSION=4.03
     - OCAML_VERSION=4.04
@@ -17,5 +15,7 @@ env:
     - OCAML_VERSION=4.09
     - OCAML_VERSION=4.10
     - OCAML_VERSION=4.11.0+trunk OCAML_BETA=enable
+      PINS="ppx_tools:https://github.com/kit-ty-kate/ppx_tools.git#411
+        ppx_deriving:https://github.com/ocaml-ppx/ppx_deriving.git#pre-ppxlib"
 os:
   - linux
