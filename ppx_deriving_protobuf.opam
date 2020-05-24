@@ -19,7 +19,7 @@ depends: [
   "ppxfind"
   "ppx_tools"
   "cppo"         {build}
-  "ppx_deriving" {>= "4.0" & < "5.0"}
+  "ppx_deriving" {>= "4.5.0" & < "5.0"}
   "ounit"        {with-test}
   "uint"         {with-test}
 ]
