@@ -15,10 +15,8 @@
  (name ppx_deriving_protobuf)
  (public_name ppx_deriving_protobuf)
  (synopsis "[@@deriving protobuf]")
- (libraries ppx_deriving.api)
- (preprocess
-  (action
-   (run ppxfind -legacy ppx_tools.metaquot --as-pp %{input-file})))
+ (libraries ppxlib ppx_deriving.api)
+ (preprocess (pps ppxlib.metaquot))
  (ppx_runtime_libraries ppx_deriving_protobuf.runtime)
  (modules ppx_deriving_protobuf)
  (kind ppx_deriver))
