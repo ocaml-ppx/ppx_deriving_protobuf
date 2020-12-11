@@ -20,7 +20,7 @@ depends: [
   "dune"         {>= "1.0"}
   "cppo"         {build}
   "ppx_deriving" {>= "5.2.1"}
-  "ounit"        {with-test}
+  "ounit2"       {with-test}
   "uint"         {with-test}
 ]
 synopsis: "A Protocol Buffers codec generator for OCaml"

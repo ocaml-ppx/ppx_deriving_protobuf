@@ -1,6 +1,6 @@
 (executable
  (name test_ppx_protobuf)
- (libraries str uint oUnit)
+ (libraries str uint ounit2)
  (preprocess
   (pps ppx_deriving_protobuf)))
 
