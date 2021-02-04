@@ -1,25 +1,13 @@
-#if OCAML_VERSION >= (4, 08, 0)
 #define Rtag_patt(label, attrs, has_empty, args) \
         { \
           prf_desc = Rtag({ txt = label }, has_empty, args); \
           prf_attributes = attrs; \
         }
-#elif OCAML_VERSION >= (4, 06, 0)
-#define Rtag_patt(label, attrs, has_empty, args) \
-        Rtag({ txt = label }, attrs, has_empty, args)
-#else
-#define Rtag_patt(label, attrs, has_empty, args) \
-        Rtag(label, attrs, has_empty, args)
-#endif
 
-#if OCAML_VERSION >= (4, 08, 0)
 #define Attribute_patt(loc_, txt_, payload) {attr_name = \
                                                 {txt = txt_; loc = loc_}; \
                                                 attr_payload = payload; \
                                                 attr_loc = _ }
-#else
-#define Attribute_patt(loc_, txt_, payload) ({txt = txt_; loc = loc_}, payload)
-#endif
 
 open Ppxlib
 open Asttypes
