@@ -1,5 +1,14 @@
-Changelog
-=========
+3.0.0
+-----
+
+  * Add support for OCaml 4.11 (#36)
+    (Thierry Martinez, review by Gabriel Scherer)
+  * Add support for OCaml 4.12 (#39)
+    (Kate Deplaix, review by Gabriel Scherer)
+  * Port to ppx_deriving 5.0 and ppxlib (#39)
+    (Kate Deplaix, review by Gabriel Scherer)
+  * Upgrade the tests from ounit to ounit2 (#39)
+    (Kate Deplaix, review by Gabriel Scherer)
 
 2.7
 ---
