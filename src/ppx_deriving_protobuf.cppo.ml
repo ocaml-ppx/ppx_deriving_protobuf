@@ -1,34 +1,23 @@
-#if OCAML_VERSION >= (4, 08, 0)
 #define Rtag_patt(label, attrs, has_empty, args) \
         { \
           prf_desc = Rtag({ txt = label }, has_empty, args); \
           prf_attributes = attrs; \
         }
-#elif OCAML_VERSION >= (4, 06, 0)
-#define Rtag_patt(label, attrs, has_empty, args) \
-        Rtag({ txt = label }, attrs, has_empty, args)
-#else
-#define Rtag_patt(label, attrs, has_empty, args) \
-        Rtag(label, attrs, has_empty, args)
-#endif
 
-#if OCAML_VERSION >= (4, 08, 0)
 #define Attribute_patt(loc_, txt_, payload) {attr_name = \
                                                 {txt = txt_; loc = loc_}; \
                                                 attr_payload = payload; \
                                                 attr_loc = _ }
-#else
-#define Attribute_patt(loc_, txt_, payload) ({txt = txt_; loc = loc_}, payload)
-#endif
 
-open Longident
-open Location
+open Ppxlib
 open Asttypes
 open Parsetree
-open Ast_mapper
 open Ast_helper
-open Ast_convenience
+open Ppx_deriving.Ast_convenience
 
+let lid x =
+  let loc = !default_loc in
+  Ast_builder.Default.Located.lident ~loc x
 
 type pb_encoding =
 | Pbe_varint
@@ -94,7 +83,7 @@ let filter_map f lst =
   List.map f lst |> filter []
 
 let string_of_lident lid =
-  String.concat "." (Longident.flatten lid)
+  String.concat "." (Longident.flatten_exn lid)
 
 let rec string_of_pb_encoding enc =
   match enc with
@@ -157,45 +146,45 @@ let describe_error error =
       | `Default  -> "default", "an expression, e.g. [@default \"foo\"]"
       | `Packed   -> "packed", "[@packed]"
     in
-    errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation
+    Location.raise_errorf ~loc "@%s attribute syntax is invalid: expected %s" name expectation
   | Pberr_wrong_attr (Attribute_patt(loc, txt, _)) ->
-    errorf ~loc "Attribute @%s is not recognized here" txt
+    Location.raise_errorf ~loc "Attribute @%s is not recognized here" txt
   | Pberr_no_key loc ->
-    errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]"
+    Location.raise_errorf ~loc "Type specification must include a key attribute, e.g. int [@key 42]"
   | Pberr_key_invalid (loc, key) ->
     if key >= 19000 && key <= 19999 then
-      errorf ~loc "Key %d is in reserved range [19000:19999]" key
+      Location.raise_errorf ~loc "Key %d is in reserved range [19000:19999]" key
     else
-      errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key
+      Location.raise_errorf ~loc "Key %d is outside of valid range [1:0x1fffffff]" key
   | Pberr_key_duplicate (key, loc1, loc2) ->
-    errorf ~loc:loc1 "Key %d is already used" key
+    Location.raise_errorf ~loc:loc1 "Key %d is already used" key
 #if OCAML_VERSION >= (4, 08, 0)
-                 ~sub:[msg ~loc:loc2 "Initially defined here"]
+                 ~sub:[Ocaml_common.Location.msg ~loc:loc2 "Initially defined here"]
 #else
-                 ~sub:[errorf ~loc:loc2 "Initially defined here"]
+                 ~sub:[Location.raise_errorf ~loc:loc2 "Initially defined here"]
 #endif
   | Pberr_abstract { ptype_loc = loc } ->
-    errorf ~loc "Abstract types are not supported"
+    Location.raise_errorf ~loc "Abstract types are not supported"
   | Pberr_open { ptype_loc = loc } ->
-    errorf ~loc "Open types are not supported"
+    Location.raise_errorf ~loc "Open types are not supported"
   | Pberr_wrong_ty ({ ptyp_loc = loc } as ptyp) ->
-    errorf ~loc "Type %s does not have a Protobuf mapping"
+    Location.raise_errorf ~loc "Type %s does not have a Protobuf mapping"
                 (Ppx_deriving.string_of_core_type ptyp)
   | Pberr_wrong_tparm ({ ptyp_loc = loc } as ptyp) ->
-    errorf ~loc "Type %s cannot be used as a type parameter"
+    Location.raise_errorf ~loc "Type %s cannot be used as a type parameter"
                 (Ppx_deriving.string_of_core_type ptyp)
   | Pberr_no_conversion (loc, kind, enc) ->
-    errorf ~loc "\"%s\" is not a valid representation for %s"
+    Location.raise_errorf ~loc "\"%s\" is not a valid representation for %s"
                       (string_of_pb_encoding enc) (string_of_pb_type kind)
   | Pberr_packed_bytes loc ->
-    errorf ~loc "Only fields with varint, bits32 or bits64 encoding may be packed"
+    Location.raise_errorf ~loc "Only fields with varint, bits32 or bits64 encoding may be packed"
   | Pberr_dumb_protoc loc ->
-    errorf ~loc "Parametric types are not supported when exporting to protoc"
+    Location.raise_errorf ~loc "Parametric types are not supported when exporting to protoc"
   | Pberr_ocaml_expr loc ->
-    errorf ~loc "Nontrivial OCaml expressions cannot be exported to protoc"
+    Location.raise_errorf ~loc "Nontrivial OCaml expressions cannot be exported to protoc"
 
 let () =
-  Location.register_error_of_exn (fun exn ->
+  Location.Error.register_error_of_exn (fun exn ->
     match exn with
     | Error err -> Some (describe_error err)
     | _ -> None)
@@ -204,13 +193,9 @@ let deriver = "protobuf"
 
 let pb_key_of_attrs attrs =
   match Ppx_deriving.attr ~deriver "key" attrs with
-#if OCAML_VERSION < (4, 03, 0)
-  | Some ({ loc }, PStr [[%stri [%e? { pexp_desc = Pexp_constant (Const_int key) }]]]) ->
-#else
   | Some (Attribute_patt(loc, _,
     (PStr [[%stri [%e? { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) }]]]))) ->
     let key = int_of_string sn in
-#endif
     if key < 1 || key > 0x1fffffff || (key >= 19000 && key <= 19999) then
       raise (Error (Pberr_key_invalid (loc, key)));
     Some key
@@ -412,7 +397,6 @@ let fields_of_ptype base_path ptype =
       |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes; pcd_loc; } ->
        (name, pcd_args, pcd_attributes, pcd_loc)
       )
-#if OCAML_VERSION >= (4, 03, 0)
       |> List.map (fun (name, pcd_args, pcd_attributes, pcd_loc) ->
         match pcd_args with
         | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes, pcd_loc)
@@ -428,7 +412,6 @@ let fields_of_ptype base_path ptype =
           let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in
           (name, pcd_args, pcd_attributes, pcd_loc)
       )
-#endif
       |> fields_of_variant ptype_loc
   in
   fields |> List.iter (fun field ->
@@ -438,22 +421,12 @@ let fields_of_ptype base_path ptype =
   fields |> List.sort (fun { pbf_key = a } { pbf_key = b } -> compare a b)
 
 let empty_constructor_argument {pcd_args; _ } =
-#if OCAML_VERSION < (4, 03, 0)
-  match pcd_args with
-  | [] -> true
-  | _ -> false
-#else
   match pcd_args with
   | Pcstr_tuple   [] | Pcstr_record [] -> true
   | _ -> false
-#endif
 
 let int64_constant_of_int i =
-#if OCAML_VERSION < (4, 03, 0)
-  Const_int64 (Int64.of_int i)
-#else
   Pconst_integer (string_of_int i, Some 'L')
-#endif
 
 let derive_reader_bare base_path fields ptype =
   let mk_variant mk_constr constrs =
@@ -465,12 +438,15 @@ let derive_reader_bare base_path fields ptype =
                   (mk_constr name)) :: mk_variant_cases rest
       | [] ->
         let field_name = String.concat "." base_path in
+        let loc = !default_loc in
         [Exp.case [%pat? _] [%expr raise Protobuf.Decoder.
                               (Failure (Malformed_variant [%e str field_name]))]]
     in
     let matcher =
+      let loc = !default_loc in
       Exp.match_ [%expr Protobuf.Decoder.varint decoder]
                  (mk_variant_cases constrs) in
+    let loc = !default_loc in
     Some (Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "from_protobuf_bare") ptype))
                 [%expr fun decoder -> [%e Ppx_deriving.sanitize matcher]])
   in
@@ -510,12 +486,15 @@ let rec derive_reader base_path fields ptype =
   let rec mk_cells fields k =
     match fields with
     | { pbf_kind = (Pbk_required | Pbk_optional) } as field :: rest ->
+      let loc = !default_loc in
       [%expr let [%p pvar field.pbf_name] = ref None in [%e mk_cells rest k]]
     | { pbf_kind = Pbk_repeated } as field :: rest ->
+      let loc = !default_loc in
       [%expr let [%p pvar field.pbf_name] = ref [] in [%e mk_cells rest k]]
     | [] -> k
   in
   let rec mk_reader ({ pbf_name; pbf_path; pbf_enc; pbf_type; } as field) =
+    let loc = !default_loc in
     let value =
       let ident = Exp.ident (lid ("Protobuf.Decoder." ^ (string_of_pb_encoding pbf_enc))) in
       [%expr [%e ident] decoder]
@@ -597,6 +576,7 @@ let rec derive_reader base_path fields ptype =
       | Pbk_repeated, ((Pbe_varint | Pbe_zigzag | Pbe_bits64 | Pbe_bits32) as pbf_enc
                       | Pbe_packed pbf_enc) ->
         (* always recognize packed fields *)
+        let loc = !default_loc in
         [Exp.case [%pat? (Some ([%p pint pbf_key], Protobuf.Bytes))]
                   [%expr [%e evar pbf_name] :=
                            (let decoder = Protobuf.Decoder.nested decoder in
@@ -610,12 +590,15 @@ let rec derive_reader base_path fields ptype =
       let pbf_enc, updated =
         match pbf_enc, pbf_kind with
         | pbf_enc, (Pbk_required | Pbk_optional) ->
+          let loc = !default_loc in
           pbf_enc, [%expr Some [%e mk_reader field]]
         | (Pbe_packed pbf_enc | pbf_enc), Pbk_repeated ->
+          let loc = !default_loc in
           pbf_enc, [%expr [%e mk_reader field] :: ![%e evar pbf_name]]
       in
       let field_name = String.concat "." pbf_path in
       let payload_enc = string_payload_kind_of_pb_encoding pbf_enc in
+      let loc = !default_loc in
       (Exp.case [%pat? Some ([%p pint pbf_key], [%p pconstr payload_enc []])]
                 [%expr [%e evar pbf_name] := [%e updated]; read ()]) ::
       (Exp.case [%pat? Some ([%p pint pbf_key], kind)]
@@ -625,6 +608,7 @@ let rec derive_reader base_path fields ptype =
     | [] -> []
   in
   let matcher =
+    let loc = !default_loc in
     Exp.match_ [%expr Protobuf.Decoder.key decoder]
                ((mk_field_cases fields) @
                 [Exp.case [%pat? Some (_, kind)]
@@ -637,19 +621,24 @@ let rec derive_reader base_path fields ptype =
     in
     match ptyp with
     | [%type: [%t? _] option] ->
+      let loc = !default_loc in
       [%expr ![%e evar pbf_name]]
     | [%type: [%t? _] list] ->
+      let loc = !default_loc in
       [%expr List.rev (![%e evar pbf_name])]
     | [%type: [%t? _] array] ->
+      let loc = !default_loc in
       [%expr Array.of_list (List.rev (![%e evar pbf_name]))]
     | { ptyp_desc = (Ptyp_constr _ | Ptyp_tuple _ | Ptyp_variant _ | Ptyp_var _); } ->
       let field_name = String.concat "." pbf_path in
+      let loc = !default_loc in
       let default = [%expr raise Protobuf.Decoder.(Failure (Missing_field [%e str field_name]))] in
       let default = match pbf_default with Some x -> x | None  -> default in
       [%expr match ![%e evar pbf_name] with None -> [%e default] | Some v -> v ]
     | _ -> assert false
   in
   let mk_variant ptype_name ptype_loc mk_constr constrs =
+    let loc = ptype_loc in
     let with_args =
       constrs |> filter_map (fun pcd ->
         match pcd with
@@ -736,7 +725,6 @@ let rec derive_reader base_path fields ptype =
       |> List.map (fun { pcd_name = { txt = name}; pcd_args; pcd_attributes; } ->
         name, pcd_args, pcd_attributes
       )
-#if OCAML_VERSION >= (4, 03, 0)
       |> List.map (fun (name, pcd_args, pcd_attributes) ->
         match pcd_args with
         | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes)
@@ -744,9 +732,9 @@ let rec derive_reader base_path fields ptype =
           let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in
           (name, pcd_args, pcd_attributes)
        )
-#endif
       |> mk_variant ptype_name ptype_loc constr
   in
+  let loc = !default_loc in
   let read =
     [%expr let rec read () = [%e matcher] in read (); [%e constructor]] |>
     mk_cells fields |>
@@ -767,6 +755,7 @@ let derive_writer_bare fields ptype =
         mk_variant_cases rest
       | [] -> []
     in
+    let loc = !default_loc in
     let matcher = Exp.match_ [%expr value] (mk_variant_cases constrs) in
     let writer  = [%expr Protobuf.Encoder.varint [%e matcher] encoder] in
     Some (Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf_bare") ptype))
@@ -804,6 +793,7 @@ let rec derive_writer fields ptype =
     | [] -> k
   in
   let mk_value_writer { pbf_name; pbf_path; pbf_enc; pbf_type; } =
+    let loc = !default_loc in
     let encode v =
       let ident = Exp.ident (lid ("Protobuf.Encoder." ^ (string_of_pb_encoding pbf_enc))) in
       [%expr [%e ident] [%e v] encoder]
@@ -877,6 +867,7 @@ let rec derive_writer fields ptype =
     | _ -> assert false
   in
   let mk_writer ({ pbf_name; pbf_kind; pbf_key; pbf_enc; pbf_default } as field) =
+    let loc = !default_loc in
     let key_writer   = [%expr Protobuf.Encoder.key ([%e int pbf_key ],
                           [%e constr (string_payload_kind_of_pb_encoding pbf_enc) []]) encoder] in
     match pbf_kind, pbf_enc with
@@ -906,12 +897,14 @@ let rec derive_writer fields ptype =
           [%e key_writer]; [%e mk_value_writer field]) [%e evar pbf_name]]
   in
   let mk_writers fields =
+    let loc = !default_loc in
     List.fold_right (fun field k ->
       [%expr [%e mk_writer field]; [%e k]]) fields [%expr ()]
   in
   let deconstruct_ptyp pbf_name ptyp k =
     match ptyp with
     | [%type: [%t? _] array] ->
+      let loc = !default_loc in
       [%expr let [%p pvar pbf_name] = Array.to_list [%e evar pbf_name] in [%e k]]
     | [%type: [%t? _] option]
     | [%type: [%t? _] list]
@@ -925,12 +918,14 @@ let rec derive_writer fields ptype =
       | (name, [], attrs)  :: rest ->
         let key   = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
         let ekey  = Exp.constant (int64_constant_of_int key) in
+        let loc = !default_loc in
         (Exp.case (mk_patt name []) [%expr Protobuf.Encoder.varint [%e ekey] encoder]) ::
         mk_variant_cases rest
       | (name, [arg], attrs) :: rest ->
         let key   = match pb_key_of_attrs attrs with Some key -> key | None -> assert false in
         let ekey  = Exp.constant (int64_constant_of_int key) in
         let field = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields in
+        let loc = !default_loc in
         (Exp.case (mk_patt name [pvar ("constr_" ^ name)])
                   (deconstruct_ptyp field.pbf_name arg
                     [%expr
@@ -942,6 +937,7 @@ let rec derive_writer fields ptype =
         let ekey  = Exp.constant (int64_constant_of_int key) in
         let field = List.find (fun { pbf_name } -> pbf_name = "constr_" ^ name) fields in
         let argns = List.mapi (fun i _ -> "a" ^ (string_of_int i)) args in
+        let loc = !default_loc in
         (Exp.case (mk_patt name (List.map pvar argns))
                   [%expr
                     Protobuf.Encoder.varint [%e ekey] encoder;
@@ -950,6 +946,7 @@ let rec derive_writer fields ptype =
         mk_variant_cases rest
       | [] -> []
     in
+    let loc = !default_loc in
     [%expr
       Protobuf.Encoder.key (1, Protobuf.Varint) encoder;
       [%e Exp.match_ (evar "value") (mk_variant_cases constrs)]]
@@ -957,6 +954,7 @@ let rec derive_writer fields ptype =
   let mk_deconstructor fields =
     match ptype with
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some { ptyp_desc = Ptyp_tuple ptyps } } ->
+      let loc = !default_loc in
       [%expr
         let [%p Pat.tuple (List.mapi (fun i _ ->
                   pvar (Printf.sprintf "elem_%d" i)) ptyps)] = value in
@@ -979,11 +977,13 @@ let rec derive_writer fields ptype =
           | _ -> assert false) rows)
 
     | { ptype_kind = Ptype_abstract; ptype_manifest = Some ptyp } ->
+      let loc = !default_loc in
       [%expr let alias = value in
              [%e deconstruct_ptyp "alias" ptyp (mk_writers fields)]]
     | { ptype_kind = (Ptype_abstract | Ptype_open) } ->
       assert false
     | { ptype_kind = Ptype_record ldecls; } ->
+      let loc = !default_loc in
       [%expr
         let [%p Pat.record (List.map (fun { pld_name } ->
                   let label = lid pld_name.txt in
@@ -992,12 +992,11 @@ let rec derive_writer fields ptype =
         [%e List.fold_right (fun { pld_name; pld_type } k ->
                 deconstruct_ptyp (Printf.sprintf "field_%s" pld_name.txt) pld_type k) ldecls
               (mk_writers fields)]]
-    | { ptype_kind = Ptype_variant constrs; ptype_name; ptype_loc } ->
+    | { ptype_kind = Ptype_variant constrs; ptype_name } ->
       constrs
       |> List.map (fun { pcd_name = { txt = name }; pcd_args; pcd_attributes } ->
           (name, pcd_args, pcd_attributes)
       )
-#if OCAML_VERSION >= (4, 03, 0)
       |> List.map (fun (name, pcd_args, pcd_attributes) ->
         match pcd_args with
         | Pcstr_tuple pcd_args -> (name, pcd_args, pcd_attributes)
@@ -1005,11 +1004,11 @@ let rec derive_writer fields ptype =
           let pcd_args = List.map (fun {pld_type; _ } -> pld_type) pcd_label_args in
           (name, pcd_args, pcd_attributes)
       )
-#endif
       |> mk_variant pconstr
 
   in
   let write = mk_deconstructor fields |> mk_imm_writers fields in
+  let loc = !default_loc in
   Vb.mk (pvar (Ppx_deriving.mangle_type_decl (`Suffix "to_protobuf") ptype))
         (Ppx_deriving.poly_fun_of_type_decl ptype
           [%expr fun value encoder -> [%e Ppx_deriving.sanitize write]])
@@ -1041,6 +1040,7 @@ let has_bare ptype =
 
 let sig_of_type ~options ~path ({ ptype_name = { txt = name } } as ptype) =
   let typ = Ppx_deriving.core_type_of_type_decl ptype in
+  let loc = !default_loc in
   let reader_typ = Ppx_deriving.poly_arrow_of_type_decl
     (fun var -> [%type: Protobuf.Decoder.t -> [%t var]]) ptype
     [%type: Protobuf.Decoder.t -> [%t typ]]
@@ -1078,7 +1078,7 @@ let rec write_protoc ~fmt ~path:base_path ?(import=[])
           ignore (LongidentSet.find lid !depends)
         with Not_found ->
           depends := LongidentSet.add lid !depends;
-          Format.fprintf fmt "@,import \"%s.protoc\";" (String.concat "." (Longident.flatten lid))
+          Format.fprintf fmt "@,import \"%s.protoc\";" (string_of_lident lid)
         end
       | _ -> ())
   else
@@ -1134,9 +1134,9 @@ let rec write_protoc ~fmt ~path:base_path ?(import=[])
       | Pbt_imm _,     Pbe_bytes  -> "_" ^ pbf_extname
       | Pbt_variant _, Pbe_varint -> "_" ^ pbf_extname
       | Pbt_nested ([], lid), Pbe_varint ->
-        (String.concat "." (Longident.flatten lid)) ^ "._tag"
+        (string_of_lident lid) ^ "._tag"
       | Pbt_nested ([], lid), Pbe_bytes ->
-        String.concat "." (Longident.flatten lid)
+        string_of_lident lid
       | Pbt_nested(_, _), _
       | Pbt_poly(_), _ ->
         raise (Error (Pberr_dumb_protoc field.pbf_loc))
@@ -1163,12 +1163,8 @@ let rec write_protoc ~fmt ~path:base_path ?(import=[])
     begin match field.pbf_default with
     | Some [%expr true]  -> Format.fprintf fmt " [default=true]"
     | Some [%expr false] -> Format.fprintf fmt " [default=false]"
-#if OCAML_VERSION < (4, 03, 0)
-    | Some { pexp_desc = Pexp_constant (Const_int i) } ->
-#else
     | Some { pexp_desc = Pexp_constant (Pconst_integer (sn, _)) } ->
       let i = int_of_string sn in
-#endif
       Format.fprintf fmt " [default=%d]" i
     | Some { pexp_desc = Pexp_construct ({ txt = Lident n }, _) }
     | Some { pexp_desc = Pexp_variant (n, _) } ->
@@ -1219,7 +1215,7 @@ let parse_options ~options ~path type_decls =
       protoc := Some protoc_path
     | "protoc_import" ->
       protoc_import := !protoc_import @ Ppx_deriving.Arg.(get_expr ~deriver (list string)) expr
-    | _ -> raise_errorf ~loc:expr.pexp_loc "%s does not support option %s" deriver name);
+    | _ -> Location.raise_errorf ~loc:expr.pexp_loc "%s does not support option %s" deriver name);
   match !protoc with
   | Some protoc_path ->
     let fmt =

@@ -92,7 +92,7 @@ let test_encoder ctxt =
 let test_overflow ctxt =
   if Sys.word_size = 32 then
     assert_raises Decoder.(Failure (Overflow ""))
-                  (fun () -> Decoder.int_of_int32 "" 0xffffffffl)
+                  (fun () -> Decoder.int_of_int32 "" 0x7fffffffl)
   else
     assert_equal (-1) (Decoder.int_of_int32 "" 0xffffffffl);
   assert_raises Decoder.(Failure (Overflow ""))
